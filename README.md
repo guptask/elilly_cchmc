@@ -18,11 +18,11 @@ A binary called **analyze** will be created.
 + Command to run the software: 
 **./analyze <image directory path with / at end>**
 
-+ Image directory path should have a **tiff** directory which contains the 
-tiff image directories for each czi image.
++ Image directory path should have a **original** directory which contains the 
+separate tiff images for the RGB layers.
 
 + **image_list.dat** has to be created inside the image directory path. This 
-tracks the different czi images that are being processed and allows selective 
+tracks the different images that are being processed and allows selective 
 processing of one or more images.
 
 ##Result

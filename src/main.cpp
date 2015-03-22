@@ -32,9 +32,14 @@ enum class HierarchyType : unsigned char {
 bool enhanceImage(cv::Mat src, ChannelType channel_type, 
                             cv::Mat *norm, cv::Mat *dst) {
 
+    // Split the image
+    std::vector<cv::Mat> channel(3);
+    cv::split(src, channel);
+    cv::Mat img = channel[0];
+
     // Normalize the image
     cv::Mat normalized;
-    cv::normalize(src, normalized, 0, 255, cv::NORM_MINMAX, CV_8UC1);
+    cv::normalize(img, normalized, 0, 255, cv::NORM_MINMAX, CV_8UC1);
     *norm = normalized;
 
     // Enhance the image using Gaussian blur and thresholding
@@ -158,7 +163,8 @@ void contourCalc(cv::Mat src, ChannelType channel_type,
 }
 
 /* Process the images inside each directory */
-bool processImage(std::string path, std::string image_name, std::string metrics_file) {
+bool processImage(std::string path, std::string blue_image, std::string green_image, 
+                                            std::string red_image, std::string metrics_file) {
 
     /* Create the data output file for images that were processed */
     std::ofstream data_stream;
@@ -175,20 +181,29 @@ bool processImage(std::string path, std::string image_name, std::string metrics_
         mkdir(out_directory.c_str(), 0700);
     }
 
-    // Extract the bgr streams for each input image
-    std::string image_path = path + "original/" + image_name;
-    cv::Mat img = cv::imread(image_path.c_str(), cv::IMREAD_COLOR | cv::IMREAD_ANYDEPTH);
-    if (img.empty()) {
-        std::cerr << "Invalid input filename" << std::endl;
+    // Extract the Blue stream for each input image
+    std::string blue_path = path + "original/" + blue_image;
+    cv::Mat blue = cv::imread(blue_path.c_str(), cv::IMREAD_COLOR | cv::IMREAD_ANYDEPTH);
+    if (blue.empty()) {
+        std::cerr << "Invalid blue input filename" << std::endl;
         return false;
     }
-    std::vector<cv::Mat> channel(3);
-    cv::Mat blue, green, red, original;
-    original = img;
-    cv::split(img, channel);
-    blue  = channel[0];
-    green = channel[1];
-    red   = channel[2];
+
+    // Extract the Green stream for each input image
+    std::string green_path = path + "original/" + green_image;
+    cv::Mat green = cv::imread(green_path.c_str(), cv::IMREAD_COLOR | cv::IMREAD_ANYDEPTH);
+    if (green.empty()) {
+        std::cerr << "Invalid green input filename" << std::endl;
+        return false;
+    }
+
+    // Extract the Red stream for each input image
+    std::string red_path = path + "original/" + red_image;
+    cv::Mat red = cv::imread(red_path.c_str(), cv::IMREAD_COLOR | cv::IMREAD_ANYDEPTH);
+    if (red.empty()) {
+        std::cerr << "Invalid red input filename" << std::endl;
+        return false;
+    }
 
     /** Gather BGR channel information needed for feature extraction **/
     cv::Mat blue_normalized, blue_enhanced, green_normalized, green_enhanced, 
@@ -204,7 +219,7 @@ bool processImage(std::string path, std::string image_name, std::string metrics_
     }
 
     // Blue channel
-    std::string out_blue = out_directory + image_name;
+    std::string out_blue = out_directory + blue_image;
     out_blue.insert(out_blue.find_last_of("."), "_blue_enhanced", 14);
     if (DEBUG_FLAG) cv::imwrite(out_blue.c_str(), blue_enhanced);
 
@@ -219,7 +234,7 @@ bool processImage(std::string path, std::string image_name, std::string metrics_
     if (DEBUG_FLAG) cv::imwrite(out_blue.c_str(), blue_segmented);
 
     // Green channel
-    std::string out_green = out_directory + image_name;
+    std::string out_green = out_directory + green_image;
     out_green.insert(out_green.find_last_of("."), "_green_enhanced", 15);
     if (DEBUG_FLAG) cv::imwrite(out_green.c_str(), green_enhanced);
 
@@ -234,7 +249,7 @@ bool processImage(std::string path, std::string image_name, std::string metrics_
     if (DEBUG_FLAG) cv::imwrite(out_green.c_str(), green_segmented);
 
     // Red channel
-    std::string out_red = out_directory + image_name;
+    std::string out_red = out_directory + red_image;
     out_red.insert(out_red.find_last_of("."), "_red_enhanced", 13);
     if (DEBUG_FLAG) cv::imwrite(out_red.c_str(), red_enhanced);
 
@@ -248,6 +263,10 @@ bool processImage(std::string path, std::string image_name, std::string metrics_
     out_red.insert(out_red.find_last_of("."), "_segmented", 10);
     if (DEBUG_FLAG) cv::imwrite(out_red.c_str(), red_segmented);
 
+    /* Common image name */
+    std::string common_image = blue_image;
+    common_image[common_image.length()-5] = 'x';
+
     /* Normalized image */
     std::vector<cv::Mat> merge_normalized;
     merge_normalized.push_back(blue_normalized);
@@ -255,7 +274,7 @@ bool processImage(std::string path, std::string image_name, std::string metrics_
     merge_normalized.push_back(red_normalized);
     cv::Mat color_normalized;
     cv::merge(merge_normalized, color_normalized);
-    std::string out_normalized = out_directory + image_name;
+    std::string out_normalized = out_directory + common_image;
     out_normalized.insert(out_normalized.find_last_of("."), "_a_normalized", 13);
     cv::imwrite(out_normalized.c_str(), color_normalized);
 
@@ -266,11 +285,11 @@ bool processImage(std::string path, std::string image_name, std::string metrics_
     merge_enhanced.push_back(red_enhanced);
     cv::Mat color_enhanced;
     cv::merge(merge_enhanced, color_enhanced);
-    std::string out_enhanced = out_directory + image_name;
+    std::string out_enhanced = out_directory + common_image;
     out_enhanced.insert(out_enhanced.find_last_of("."), "_b_enhanced", 11);
     cv::imwrite(out_enhanced.c_str(), color_enhanced);
 
-    data_stream << image_name;
+    data_stream << blue_image << "," << green_image << "," << red_image;
 
     data_stream << std::endl;
     data_stream.close();
@@ -305,6 +324,11 @@ int main(int argc, char *argv[]) {
     }
     fclose(file);
 
+    if (input_images.size()%3) {
+        std::cerr << "Image count incorrect." << std::endl;
+        return -1;
+    }
+
     /* Create and prepare the file for metrics */
     std::string metrics_file = path + "computed_metrics.csv";
     std::ofstream data_stream;
@@ -314,15 +338,18 @@ int main(int argc, char *argv[]) {
         return -1;
     }
 
-    data_stream << "image";
+    data_stream << "Blue image,Green image,Red image";
 
     data_stream << std::endl;
     data_stream.close();
 
     /* Process each image */
-    for (unsigned int index = 0; index < input_images.size(); index++) {
-        std::cout << "Processing " << input_images[index] << std::endl;
-        if (!processImage(path, input_images[index], metrics_file)) {
+    for (unsigned int index = 0; index < input_images.size(); index += 3) {
+        std::cout << "Processing " << input_images[index] 
+                    << ", " << input_images[index+1] 
+                    << " and " << input_images[index+2] << std::endl;
+        if (!processImage(path, input_images[index], input_images[index+1], 
+                                                input_images[index+2], metrics_file)) {
             std::cout << "ERROR !!!" << std::endl;
             return -1;
         }
