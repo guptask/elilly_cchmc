@@ -53,7 +53,7 @@ bool enhanceImage(cv::Mat src, ChannelType channel_type,
             cv::threshold(normalized, src_gray, 10, 255, cv::THRESH_TOZERO);
             bitwise_not(src_gray, src_gray);
             cv::GaussianBlur(src_gray, enhanced, cv::Size(3,3), 0, 0);
-            cv::threshold(enhanced, enhanced, 150, 255, cv::THRESH_BINARY);
+            cv::threshold(enhanced, enhanced, 250, 255, cv::THRESH_BINARY);
 
             // Invert the mask
             bitwise_not(enhanced, enhanced);
@@ -61,30 +61,12 @@ bool enhanceImage(cv::Mat src, ChannelType channel_type,
 
         case ChannelType::GREEN: {
             // Enhance the green channel
-
-            // Create the mask
-            cv::Mat src_gray;
-            cv::threshold(normalized, src_gray, 10, 255, cv::THRESH_TOZERO);
-            bitwise_not(src_gray, src_gray);
-            cv::GaussianBlur(src_gray, enhanced, cv::Size(3,3), 0, 0);
-            cv::threshold(enhanced, enhanced, 240, 255, cv::THRESH_BINARY);
-
-            // Invert the mask
-            bitwise_not(enhanced, enhanced);
+            cv::threshold(normalized, enhanced, 25, 255, cv::THRESH_BINARY);
         } break;
 
         case ChannelType::RED: {
             // Enhance the red channel
-
-            // Create the mask
-            cv::Mat src_gray;
-            cv::threshold(normalized, src_gray, 5, 255, cv::THRESH_TOZERO);
-            bitwise_not(src_gray, src_gray);
-            cv::GaussianBlur(src_gray, enhanced, cv::Size(3,3), 0, 0);
-            cv::threshold(enhanced, enhanced, 250, 255, cv::THRESH_BINARY);
-
-            // Invert the mask
-            bitwise_not(enhanced, enhanced);
+            cv::threshold(normalized, enhanced, 5, 255, cv::THRESH_BINARY);
         } break;
 
         default: {
