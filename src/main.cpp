@@ -11,7 +11,9 @@
 #include "opencv2/imgcodecs.hpp"
 
 
-#define DEBUG_FLAG  0   // Debug flag for image channels
+#define DEBUG_FLAG              0   // Debug flag for image channels
+#define NUM_AREA_BINS           21  // Number of bins
+#define BIN_AREA                25  // Bin area
 
 
 /* Channel type */
@@ -144,6 +146,57 @@ void contourCalc(cv::Mat src, ChannelType channel_type,
     }
 }
 
+/* Classify Neural cells */
+void classifyNeuralCells(std::vector<std::vector<cv::Point>> blue_contours, 
+                            cv::Mat blue_green_intersection,
+                            std::vector<std::vector<cv::Point>> *neural_contours,
+                            std::vector<std::vector<cv::Point>> *other_contours) {
+
+    for (size_t i = 0; i < blue_contours.size(); i++) {
+
+        // Eliminate small contours via contour arc calculation
+        if ((arcLength(blue_contours[i], true) < 10) || (blue_contours[i].size() < 5)) continue;
+
+        // Determine whether neural cell by calculating blue-green coverage area
+        std::vector<std::vector<cv::Point>> specific_contour (1, blue_contours[i]);
+        cv::Mat drawing = cv::Mat::zeros(blue_green_intersection.size(), CV_8UC1);
+        drawContours(drawing, specific_contour, -1, cv::Scalar::all(255), cv::FILLED, 
+                                    cv::LINE_8, std::vector<cv::Vec4i>(), 0, cv::Point());
+        int contour_count_before = countNonZero(drawing);
+        cv::Mat contour_intersection;
+        bitwise_and(drawing, blue_green_intersection, contour_intersection);
+        int contour_count_after = countNonZero(contour_intersection);
+        float coverage_ratio = ((float)contour_count_after)/contour_count_before;
+        if (coverage_ratio < 0.20) {
+            other_contours->push_back(blue_contours[i]);
+        } else {
+            neural_contours->push_back(blue_contours[i]);
+        }
+    }
+}
+
+/* Group contour areas into bins */
+void binArea(std::vector<HierarchyType> contour_mask, 
+                std::vector<double> contour_area, 
+                std::string *contour_bins,
+                unsigned int *contour_cnt) {
+
+    std::vector<unsigned int> count(NUM_AREA_BINS, 0);
+    *contour_cnt = 0;
+    for (size_t i = 0; i < contour_mask.size(); i++) {
+        if (contour_mask[i] != HierarchyType::PARENT_CNTR) continue;
+        unsigned int area = static_cast<unsigned int>(round(contour_area[i]));
+        unsigned int bin_index = 
+            (area/BIN_AREA < NUM_AREA_BINS) ? area/BIN_AREA : NUM_AREA_BINS-1;
+        count[bin_index]++;
+    }
+
+    for (size_t i = 0; i < count.size(); i++) {
+        *contour_cnt += count[i];
+        *contour_bins += std::to_string(count[i]) + ",";
+    }
+}
+
 /* Process the images inside each directory */
 bool processImage(std::string path, std::string blue_image, std::string green_image, 
                                             std::string red_image, std::string metrics_file) {
@@ -245,9 +298,54 @@ bool processImage(std::string path, std::string blue_image, std::string green_im
     out_red.insert(out_red.find_last_of("."), "_segmented", 10);
     if (DEBUG_FLAG) cv::imwrite(out_red.c_str(), red_segmented);
 
+
     /* Common image name */
     std::string common_image = blue_image;
     common_image[common_image.length()-5] = 'x';
+    data_stream << common_image << ",";
+
+
+    /** Extract multi-dimensional features for analysis **/
+
+    // Blue-red channel intersection
+    cv::Mat blue_red_intersection;
+    bitwise_and(blue_enhanced, red_enhanced, blue_red_intersection);
+
+    // Blue-green channel intersection
+    cv::Mat blue_green_intersection;
+    bitwise_and(blue_enhanced, green_enhanced, blue_green_intersection);
+
+    // Green-red channel intersection
+    cv::Mat green_red_intersection;
+    bitwise_and(green_enhanced, red_enhanced, green_red_intersection);
+
+    // Classify neural cells
+    std::vector<std::vector<cv::Point>> neural_contours, remaining_contours;
+    classifyNeuralCells(contours_blue, blue_green_intersection, 
+                                &neural_contours, &remaining_contours);
+    data_stream << neural_contours.size() << "," 
+                << remaining_contours.size() << ",";
+
+    // Segment the green-red intersection
+    cv::Mat green_red_segmented;
+    std::vector<std::vector<cv::Point>> contours_green_red;
+    std::vector<cv::Vec4i> hierarchy_green_red;
+    std::vector<HierarchyType> green_red_contour_mask;
+    std::vector<double> green_red_contour_area;
+    contourCalc(green_red_intersection, ChannelType::RED, 1.0, &green_red_segmented, 
+                        &contours_green_red, &hierarchy_green_red, &green_red_contour_mask, 
+                        &green_red_contour_area);
+
+    // Characterize the synapse
+    std::string synapse_bins;
+    unsigned int synapse_cnt;
+    binArea(green_red_contour_mask, green_red_contour_area, 
+                    &synapse_bins, &synapse_cnt);
+    data_stream << synapse_cnt << "," << synapse_bins;
+
+
+    data_stream << std::endl;
+    data_stream.close();
 
     /* Normalized image */
     std::vector<cv::Mat> merge_normalized;
@@ -271,10 +369,30 @@ bool processImage(std::string path, std::string blue_image, std::string green_im
     out_enhanced.insert(out_enhanced.find_last_of("."), "_b_enhanced", 11);
     cv::imwrite(out_enhanced.c_str(), color_enhanced);
 
-    data_stream << blue_image << "," << green_image << "," << red_image;
+    /* Analyzed image */
+    cv::Mat drawing_blue  = blue_enhanced;
+    cv::Mat drawing_green = cv::Mat::zeros(green_enhanced.size(), CV_8UC1);
+    cv::Mat drawing_red   = cv::Mat::zeros(red_enhanced.size(), CV_8UC1);
 
-    data_stream << std::endl;
-    data_stream.close();
+    // Draw neural cell boundaries
+    for (size_t i = 0; i < neural_contours.size(); i++) {
+        cv::RotatedRect min_ellipse = fitEllipse(cv::Mat(neural_contours[i]));
+        ellipse(drawing_blue, min_ellipse, 255, 4, 8);
+        ellipse(drawing_green, min_ellipse, 255, 4, 8);
+        ellipse(drawing_red, min_ellipse, 0, 4, 8);
+    }
+
+    // Merge the modified red, blue and green layers
+    std::vector<cv::Mat> merge_analyzed;
+    merge_analyzed.push_back(drawing_blue);
+    merge_analyzed.push_back(drawing_green);
+    merge_analyzed.push_back(drawing_red);
+    cv::Mat color_analyzed;
+    cv::merge(merge_analyzed, color_analyzed);
+    std::string out_analyzed = out_directory + common_image;
+    out_analyzed.insert(out_analyzed.find_last_of("."), "_c_analyzed", 11);
+    cv::imwrite(out_analyzed.c_str(), color_analyzed);
+
     return true;
 }
 
@@ -320,7 +438,16 @@ int main(int argc, char *argv[]) {
         return -1;
     }
 
-    data_stream << "Blue image,Green image,Red image";
+    data_stream << "Image,Neural Nuclei Count,Other Nuclei Count,";
+
+    data_stream << "Synapse Count,";
+    for (unsigned int i = 0; i < NUM_AREA_BINS-1; i++) {
+        data_stream << i*BIN_AREA 
+                    << " <= Synapse area < " 
+                    << (i+1)*BIN_AREA << ",";
+    }
+    data_stream << "Synapse area >= " 
+                << (NUM_AREA_BINS-1)*BIN_AREA << ",";
 
     data_stream << std::endl;
     data_stream.close();
