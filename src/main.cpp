@@ -21,7 +21,8 @@
 enum class ChannelType : unsigned char {
     BLUE = 0,
     GREEN,
-    RED
+    RED,
+    RED_HIGH
 };
 
 /* Hierarchy type */
@@ -69,7 +70,12 @@ bool enhanceImage(cv::Mat src, ChannelType channel_type,
 
         case ChannelType::RED: {
             // Enhance the red channel
-            cv::threshold(normalized, enhanced, 5, 255, cv::THRESH_BINARY);
+            cv::threshold(normalized, enhanced, 10, 255, cv::THRESH_BINARY);
+        } break;
+
+        case ChannelType::RED_HIGH: {
+            // Enhance the red high channel
+            cv::threshold(normalized, enhanced, 90, 255, cv::THRESH_BINARY);
         } break;
 
         default: {
@@ -98,7 +104,8 @@ void contourCalc(cv::Mat src, ChannelType channel_type,
                                                         cv::CHAIN_APPROX_SIMPLE);
         } break;
 
-        case ChannelType::RED : {
+        case ChannelType::RED : 
+        case ChannelType::RED_HIGH : {
             findContours(temp_src, *contours, *hierarchy, cv::RETR_CCOMP, 
                                                         cv::CHAIN_APPROX_SIMPLE);
         } break;
@@ -282,7 +289,7 @@ bool processImage(std::string path, std::string blue_image, std::string green_im
 
     /** Gather BGR channel information needed for feature extraction **/
     cv::Mat blue_normalized, blue_enhanced, green_normalized, green_enhanced, 
-                                                    red_normalized, red_enhanced;
+            red_normalized, red_enhanced, red_high_normalized, red_high_enhanced;
     if(!enhanceImage(blue, ChannelType::BLUE, &blue_normalized, &blue_enhanced)) {
         return false;
     }
@@ -290,6 +297,9 @@ bool processImage(std::string path, std::string blue_image, std::string green_im
         return false;
     }
     if(!enhanceImage(red, ChannelType::RED, &red_normalized, &red_enhanced)) {
+        return false;
+    }
+    if(!enhanceImage(red, ChannelType::RED_HIGH, &red_high_normalized, &red_high_enhanced)) {
         return false;
     }
 
@@ -338,6 +348,23 @@ bool processImage(std::string path, std::string blue_image, std::string green_im
     out_red.insert(out_red.find_last_of("."), "_segmented", 10);
     if (DEBUG_FLAG) cv::imwrite(out_red.c_str(), red_segmented);
 
+    // Red High channel
+    std::string out_red_high = out_directory + red_image;
+    out_red_high.insert(out_red_high.find_last_of("."), "_red_high_enhanced", 18);
+    if (DEBUG_FLAG) cv::imwrite(out_red_high.c_str(), red_high_enhanced);
+
+    cv::Mat red_high_segmented;
+    std::vector<std::vector<cv::Point>> contours_red_high;
+    std::vector<cv::Vec4i> hierarchy_red_high;
+    std::vector<HierarchyType> red_high_contour_mask;
+    std::vector<double> red_high_contour_area;
+    contourCalc(red_high_enhanced, ChannelType::RED_HIGH, 1.0, 
+                &red_high_segmented, &contours_red_high, 
+                &hierarchy_red_high, &red_high_contour_mask, 
+                &red_high_contour_area);
+    out_red_high.insert(out_red_high.find_last_of("."), "_segmented", 10);
+    if (DEBUG_FLAG) cv::imwrite(out_red_high.c_str(), red_high_segmented);
+
 
     /* Common image name */
     std::string common_image = blue_image;
@@ -358,6 +385,10 @@ bool processImage(std::string path, std::string blue_image, std::string green_im
     // Green-red channel intersection
     cv::Mat green_red_intersection;
     bitwise_and(green_enhanced, red_enhanced, green_red_intersection);
+
+    // Green-red high channel intersection
+    cv::Mat green_red_high_intersection;
+    bitwise_and(green_enhanced, red_high_enhanced, green_red_high_intersection);
 
     // Filter the blue contours
     std::vector<std::vector<cv::Point>> contours_blue_filtered;
@@ -386,12 +417,30 @@ bool processImage(std::string path, std::string blue_image, std::string green_im
                         &contours_green_red, &hierarchy_green_red, &green_red_contour_mask, 
                         &green_red_contour_area);
 
-    // Characterize the synapse
-    std::string synapse_bins;
-    unsigned int synapse_cnt;
+    // Characterize the green-red intersection
+    std::string green_red_bins;
+    unsigned int green_red_cnt;
     binArea(green_red_contour_mask, green_red_contour_area, 
-                    &synapse_bins, &synapse_cnt);
-    data_stream << synapse_cnt << "," << synapse_bins;
+                    &green_red_bins, &green_red_cnt);
+    data_stream << green_red_cnt << "," << green_red_bins;
+
+    // Segment the green-red high intersection
+    cv::Mat green_red_high_segmented;
+    std::vector<std::vector<cv::Point>> contours_green_red_high;
+    std::vector<cv::Vec4i> hierarchy_green_red_high;
+    std::vector<HierarchyType> green_red_high_contour_mask;
+    std::vector<double> green_red_high_contour_area;
+    contourCalc(green_red_high_intersection, ChannelType::RED_HIGH, 1.0, 
+                &green_red_high_segmented, &contours_green_red_high, 
+                &hierarchy_green_red_high, &green_red_high_contour_mask, 
+                &green_red_high_contour_area);
+
+    // Characterize the green-red high intersection
+    std::string green_red_high_bins;
+    unsigned int green_red_high_cnt;
+    binArea(green_red_high_contour_mask, green_red_high_contour_area, 
+                    &green_red_high_bins, &green_red_high_cnt);
+    data_stream << green_red_high_cnt << "," << green_red_high_bins;
 
 
     data_stream << std::endl;
@@ -422,7 +471,7 @@ bool processImage(std::string path, std::string blue_image, std::string green_im
     /* Analyzed image */
     cv::Mat drawing_blue  = blue_enhanced;
     cv::Mat drawing_green = cv::Mat::zeros(green_enhanced.size(), CV_8UC1);
-    cv::Mat drawing_red   = cv::Mat::zeros(red_enhanced.size(), CV_8UC1);
+    cv::Mat drawing_red   = red_high_enhanced;
 
     // Draw cell boundaries
     for (size_t i = 0; i < contours_blue_filtered.size(); i++) {
@@ -492,13 +541,22 @@ int main(int argc, char *argv[]) {
                     Cell Aspect Ratio (mean),Cell Aspect Ratio (std. dev.),\
                     ROI Cell Count (mean),ROI Cell Count (std. dev.),";
 
-    data_stream << "Synapse Count,";
+    data_stream << "Green-Red Contour Count,";
     for (unsigned int i = 0; i < NUM_AREA_BINS-1; i++) {
         data_stream << i*BIN_AREA 
-                    << " <= Synapse area < " 
+                    << " <= Green-Red Contour Area < " 
                     << (i+1)*BIN_AREA << ",";
     }
-    data_stream << "Synapse area >= " 
+    data_stream << "Green-Red Contour Area >= " 
+                << (NUM_AREA_BINS-1)*BIN_AREA << ",";
+
+    data_stream << "Green-Red High Contour Count,";
+    for (unsigned int i = 0; i < NUM_AREA_BINS-1; i++) {
+        data_stream << i*BIN_AREA 
+                    << " <= Green-Red High Contour Area < " 
+                    << (i+1)*BIN_AREA << ",";
+    }
+    data_stream << "Green-Red High Contour Area >= " 
                 << (NUM_AREA_BINS-1)*BIN_AREA << ",";
 
     data_stream << std::endl;
