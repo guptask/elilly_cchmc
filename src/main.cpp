@@ -14,7 +14,8 @@
 #define DEBUG_FLAG              0   // Debug flag for image channels
 #define NUM_AREA_BINS           21  // Number of bins
 #define BIN_AREA                25  // Bin area
-
+#define ROI_FACTOR              3   // ROI of cell = ROI factor x mean diameter
+#define MIN_CELL_ARC_LENGTH     250 // Cell arc length
 
 /* Channel type */
 enum class ChannelType : unsigned char {
@@ -146,33 +147,72 @@ void contourCalc(cv::Mat src, ChannelType channel_type,
     }
 }
 
-/* Classify Neural cells */
-void classifyNeuralCells(std::vector<std::vector<cv::Point>> blue_contours, 
-                            cv::Mat blue_green_intersection,
-                            std::vector<std::vector<cv::Point>> *neural_contours,
-                            std::vector<std::vector<cv::Point>> *other_contours) {
+/* Filter out ill-formed or small cells */
+void filterCells(   std::vector<std::vector<cv::Point>> blue_contours,
+                    std::vector<HierarchyType> blue_contour_mask,
+                    std::vector<std::vector<cv::Point>> *filtered_contours ) {
 
     for (size_t i = 0; i < blue_contours.size(); i++) {
+        if (blue_contour_mask[i] != HierarchyType::PARENT_CNTR) continue;
 
         // Eliminate small contours via contour arc calculation
-        if ((arcLength(blue_contours[i], true) < 10) || (blue_contours[i].size() < 5)) continue;
-
-        // Determine whether neural cell by calculating blue-green coverage area
-        std::vector<std::vector<cv::Point>> specific_contour (1, blue_contours[i]);
-        cv::Mat drawing = cv::Mat::zeros(blue_green_intersection.size(), CV_8UC1);
-        drawContours(drawing, specific_contour, -1, cv::Scalar::all(255), cv::FILLED, 
-                                    cv::LINE_8, std::vector<cv::Vec4i>(), 0, cv::Point());
-        int contour_count_before = countNonZero(drawing);
-        cv::Mat contour_intersection;
-        bitwise_and(drawing, blue_green_intersection, contour_intersection);
-        int contour_count_after = countNonZero(contour_intersection);
-        float coverage_ratio = ((float)contour_count_after)/contour_count_before;
-        if (coverage_ratio < 0.20) {
-            other_contours->push_back(blue_contours[i]);
-        } else {
-            neural_contours->push_back(blue_contours[i]);
+        if ((arcLength(blue_contours[i], true) >= MIN_CELL_ARC_LENGTH) && 
+                                            (blue_contours[i].size() >= 5)) {
+            filtered_contours->push_back(blue_contours[i]);
         }
     }
+}
+
+/* Separation metrics */
+void separationMetrics( std::vector<std::vector<cv::Point>> contours, 
+                        float *mean_diameter,
+                        float *stddev_diameter,
+                        float *mean_aspect_ratio,
+                        float *stddev_aspect_ratio,
+                        float *mean_proximity_cnt,
+                        float *stddev_proximity_cnt ) {
+
+    // Compute the normal distribution parameters of cells
+    std::vector<cv::Point2f> mc(contours.size());
+    std::vector<float> dia(contours.size());
+    std::vector<float> aspect_ratio(contours.size());
+
+    for (size_t i = 0; i < contours.size(); i++) {
+        cv::Moments mu = moments(contours[i], true);
+        mc[i] = cv::Point2f(static_cast<float>(mu.m10/mu.m00), 
+                                            static_cast<float>(mu.m01/mu.m00));
+        cv::RotatedRect min_area_rect = minAreaRect(cv::Mat(contours[i]));
+        dia[i] = (float) sqrt(pow(min_area_rect.size.width, 2) + 
+                                                pow(min_area_rect.size.height, 2));
+        aspect_ratio[i] = float(min_area_rect.size.width)/min_area_rect.size.height;
+        if (aspect_ratio[i] > 1.0) {
+            aspect_ratio[i] = 1.0/aspect_ratio[i];
+        }
+    }
+    cv::Scalar mean_dia, stddev_dia;
+    cv::meanStdDev(dia, mean_dia, stddev_dia);
+    *mean_diameter = static_cast<float>(mean_dia.val[0]);
+    *stddev_diameter = static_cast<float>(stddev_dia.val[0]);
+
+    cv::Scalar mean_ratio, stddev_ratio;
+    cv::meanStdDev(aspect_ratio, mean_ratio, stddev_ratio);
+    *mean_aspect_ratio = static_cast<float>(mean_ratio.val[0]);
+    *stddev_aspect_ratio = static_cast<float>(stddev_ratio.val[0]);
+
+    float roi = (ROI_FACTOR * mean_dia.val[0])/2;
+    std::vector<float> count(contours.size(), 0.0);
+    for (size_t i = 0; i < contours.size(); i++) {
+        for (size_t j = 0; j < contours.size(); j++) {
+            if (i == j) continue;
+            if (cv::norm(mc[i]-mc[j]) <= roi) {
+                count[i]++;
+            }
+        }
+    }
+    cv::Scalar mean_count, stddev_count;
+    cv::meanStdDev(count, mean_count, stddev_count);
+    *mean_proximity_cnt = static_cast<float>(mean_count.val[0]);
+    *stddev_proximity_cnt = static_cast<float>(stddev_count.val[0]);
 }
 
 /* Group contour areas into bins */
@@ -319,12 +359,22 @@ bool processImage(std::string path, std::string blue_image, std::string green_im
     cv::Mat green_red_intersection;
     bitwise_and(green_enhanced, red_enhanced, green_red_intersection);
 
-    // Classify neural cells
-    std::vector<std::vector<cv::Point>> neural_contours, remaining_contours;
-    classifyNeuralCells(contours_blue, blue_green_intersection, 
-                                &neural_contours, &remaining_contours);
-    data_stream << neural_contours.size() << "," 
-                << remaining_contours.size() << ",";
+    // Filter the blue contours
+    std::vector<std::vector<cv::Point>> contours_blue_filtered;
+    filterCells(contours_blue, blue_contour_mask, &contours_blue_filtered);
+    data_stream << contours_blue_filtered.size() << ",";
+
+    // Separation metrics
+    float mean_dia = 0.0, stddev_dia = 0.0;
+    float mean_aspect_ratio = 0.0, stddev_aspect_ratio = 0.0;
+    float mean_proximity_cnt = 0.0, stddev_proximity_cnt = 0.0;
+    separationMetrics(  contours_blue_filtered, 
+                        &mean_dia, &stddev_dia, 
+                        &mean_aspect_ratio, &stddev_aspect_ratio, 
+                        &mean_proximity_cnt, &stddev_proximity_cnt  );
+    data_stream << mean_dia << "," << stddev_dia << "," 
+                << mean_aspect_ratio << "," << stddev_aspect_ratio << ","
+                << mean_proximity_cnt << "," << stddev_proximity_cnt << ",";
 
     // Segment the green-red intersection
     cv::Mat green_red_segmented;
@@ -374,9 +424,9 @@ bool processImage(std::string path, std::string blue_image, std::string green_im
     cv::Mat drawing_green = cv::Mat::zeros(green_enhanced.size(), CV_8UC1);
     cv::Mat drawing_red   = cv::Mat::zeros(red_enhanced.size(), CV_8UC1);
 
-    // Draw neural cell boundaries
-    for (size_t i = 0; i < neural_contours.size(); i++) {
-        cv::RotatedRect min_ellipse = fitEllipse(cv::Mat(neural_contours[i]));
+    // Draw cell boundaries
+    for (size_t i = 0; i < contours_blue_filtered.size(); i++) {
+        cv::RotatedRect min_ellipse = fitEllipse(cv::Mat(contours_blue_filtered[i]));
         ellipse(drawing_blue, min_ellipse, 255, 4, 8);
         ellipse(drawing_green, min_ellipse, 255, 4, 8);
         ellipse(drawing_red, min_ellipse, 0, 4, 8);
@@ -438,7 +488,9 @@ int main(int argc, char *argv[]) {
         return -1;
     }
 
-    data_stream << "Image,Neural Nuclei Count,Other Nuclei Count,";
+    data_stream << "Image,Cell Count,Cell Diameter (mean),Cell Diameter (std. dev.),\
+                    Cell Aspect Ratio (mean),Cell Aspect Ratio (std. dev.),\
+                    ROI Cell Count (mean),ROI Cell Count (std. dev.),";
 
     data_stream << "Synapse Count,";
     for (unsigned int i = 0; i < NUM_AREA_BINS-1; i++) {
