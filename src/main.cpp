@@ -3,7 +3,6 @@
 #include <sys/stat.h>
 #include <fstream>
 #include <math.h>
-#include <assert.h>
 
 #include "opencv2/imgproc/imgproc.hpp"
 #include "opencv2/highgui/highgui.hpp"
@@ -44,7 +43,6 @@ bool enhanceImage(cv::Mat src, ChannelType channel_type,
     // Normalize the image
     cv::Mat normalized;
     cv::normalize(img, normalized, 0, 255, cv::NORM_MINMAX, CV_8UC1);
-    *norm = normalized;
 
     // Enhance the image using Gaussian blur and thresholding
     cv::Mat enhanced;
@@ -65,6 +63,12 @@ bool enhanceImage(cv::Mat src, ChannelType channel_type,
 
         case ChannelType::GREEN: {
             // Enhance the green channel
+
+            // Sharpen the channel
+            cv::Mat src_gray;
+            cv::GaussianBlur(normalized, src_gray, cv::Size(3,3), 0, 0);
+            cv::addWeighted(normalized, 1.5, src_gray, -0.5, 0, normalized);
+
             cv::threshold(normalized, enhanced, 25, 255, cv::THRESH_BINARY);
         } break;
 
@@ -83,6 +87,7 @@ bool enhanceImage(cv::Mat src, ChannelType channel_type,
             return false;
         }
     }
+    *norm = normalized;
     *dst = enhanced;
     return true;
 }
@@ -244,7 +249,7 @@ void binArea(std::vector<HierarchyType> contour_mask,
     }
 }
 
-/* Process the images inside each directory */
+/* Process each image */
 bool processImage(std::string path, std::string blue_image, std::string green_image, 
                                             std::string red_image, std::string metrics_file) {
 
