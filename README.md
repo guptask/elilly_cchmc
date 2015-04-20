@@ -2,21 +2,27 @@
 
 ##Packages to install
 
-+ ###opencv: 
+###opencv: 
 >Clone the opencv repo at https://github.com/Itseez/opencv. Follow the 
 instructions for installation on Linux at http://opencv.org/. Add to 
-~/.bashrc **export LD\_LIBRARY\_PATH=${LD\_LIBRARY\_PATH}:/usr/local/lib**. 
+~/.bashrc :
+```bash
+export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:/usr/local/lib
+```
 To test sample opencv code, compile using 
-**g++ <file\_name> `pkg-config opencv --cflags --libs`**
+```c++
+g++ < file_name > `pkg-config opencv --cflags --libs`
+```
 
-
-##Build and run microglia analysis package
+##Build and run image analysis package
 
 + Inside the project root directory, type **make** to build the project.
 A binary called **analyze** will be created.
 
-+ Command to run the software: 
-**./analyze <image directory path with / at end>**
++ Command to run the software:
+```c++
+./analyze < image directory path with / at end >
+```
 
 + Image directory path should have a **original** directory which contains the 
 separate tiff images for the RGB layers.
