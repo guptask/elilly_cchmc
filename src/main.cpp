@@ -2,7 +2,7 @@
 #include <dirent.h>
 #include <sys/stat.h>
 #include <fstream>
-#include <math.h>
+#include <cmath>
 
 #include "opencv2/imgproc/imgproc.hpp"
 #include "opencv2/highgui/highgui.hpp"
@@ -175,14 +175,38 @@ void filterCells(   std::vector<std::vector<cv::Point>> blue_contours,
     }
 }
 
+/* Classify cells as neural cells or astrocytes */
+void classifyCells( std::vector<std::vector<cv::Point>> filtered_blue_contours, 
+                    cv::Mat blue_green_intersection,
+                    std::vector<std::vector<cv::Point>> *neural_contours,
+                    std::vector<std::vector<cv::Point>> *astrocyte_contours ) {
+
+    for (size_t i = 0; i < filtered_blue_contours.size(); i++) {
+
+        // Determine whether neural cell by calculating blue-green coverage area
+        std::vector<std::vector<cv::Point>> specific_contour (1, filtered_blue_contours[i]);
+        cv::Mat drawing = cv::Mat::zeros(blue_green_intersection.size(), CV_8UC1);
+        drawContours(drawing, specific_contour, -1, cv::Scalar::all(255), cv::FILLED, 
+                                    cv::LINE_8, std::vector<cv::Vec4i>(), 0, cv::Point());
+        int contour_count_before = countNonZero(drawing);
+        cv::Mat contour_intersection;
+        bitwise_and(drawing, blue_green_intersection, contour_intersection);
+        int contour_count_after = countNonZero(contour_intersection);
+        float coverage_ratio = ((float)contour_count_after)/contour_count_before;
+        if (coverage_ratio < 0.40) {
+            astrocyte_contours->push_back(filtered_blue_contours[i]);
+        } else {
+            neural_contours->push_back(filtered_blue_contours[i]);
+        }
+    }
+}
+
 /* Separation metrics */
 void separationMetrics( std::vector<std::vector<cv::Point>> contours, 
                         float *mean_diameter,
                         float *stddev_diameter,
                         float *mean_aspect_ratio,
-                        float *stddev_aspect_ratio,
-                        float *mean_proximity_cnt,
-                        float *stddev_proximity_cnt ) {
+                        float *stddev_aspect_ratio  ) {
 
     // Compute the normal distribution parameters of cells
     std::vector<cv::Point2f> mc(contours.size());
@@ -210,21 +234,6 @@ void separationMetrics( std::vector<std::vector<cv::Point>> contours,
     cv::meanStdDev(aspect_ratio, mean_ratio, stddev_ratio);
     *mean_aspect_ratio = static_cast<float>(mean_ratio.val[0]);
     *stddev_aspect_ratio = static_cast<float>(stddev_ratio.val[0]);
-
-    float roi = (ROI_FACTOR * mean_dia.val[0])/2;
-    std::vector<float> count(contours.size(), 0.0);
-    for (size_t i = 0; i < contours.size(); i++) {
-        for (size_t j = 0; j < contours.size(); j++) {
-            if (i == j) continue;
-            if (cv::norm(mc[i]-mc[j]) <= roi) {
-                count[i]++;
-            }
-        }
-    }
-    cv::Scalar mean_count, stddev_count;
-    cv::meanStdDev(count, mean_count, stddev_count);
-    *mean_proximity_cnt = static_cast<float>(mean_count.val[0]);
-    *stddev_proximity_cnt = static_cast<float>(stddev_count.val[0]);
 }
 
 /* Group contour areas into bins */
@@ -398,19 +407,31 @@ bool processImage(std::string path, std::string blue_image, std::string green_im
     // Filter the blue contours
     std::vector<std::vector<cv::Point>> contours_blue_filtered;
     filterCells(contours_blue, blue_contour_mask, &contours_blue_filtered);
-    data_stream << contours_blue_filtered.size() << ",";
 
-    // Separation metrics
+    // Classify the filtered cells as neural cells or astrocytes
+    std::vector<std::vector<cv::Point>> neural_contours, astrocyte_contours;
+    classifyCells(contours_blue_filtered, blue_green_intersection, 
+                                        &neural_contours, &astrocyte_contours);
+    data_stream << contours_blue_filtered.size() << "," 
+                << neural_contours.size() << "," 
+                << astrocyte_contours.size() << ",";
+
+    // Separation metrics for neural cells
     float mean_dia = 0.0, stddev_dia = 0.0;
     float mean_aspect_ratio = 0.0, stddev_aspect_ratio = 0.0;
-    float mean_proximity_cnt = 0.0, stddev_proximity_cnt = 0.0;
-    separationMetrics(  contours_blue_filtered, 
+    separationMetrics(  neural_contours, 
                         &mean_dia, &stddev_dia, 
-                        &mean_aspect_ratio, &stddev_aspect_ratio, 
-                        &mean_proximity_cnt, &stddev_proximity_cnt  );
+                        &mean_aspect_ratio, &stddev_aspect_ratio    );
     data_stream << mean_dia << "," << stddev_dia << "," 
-                << mean_aspect_ratio << "," << stddev_aspect_ratio << ","
-                << mean_proximity_cnt << "," << stddev_proximity_cnt << ",";
+                << mean_aspect_ratio << "," << stddev_aspect_ratio << ",";
+
+    // Separation metrics for astrocytes
+    mean_dia = stddev_dia = mean_aspect_ratio = stddev_aspect_ratio = 0.0;
+    separationMetrics(  astrocyte_contours, 
+                        &mean_dia, &stddev_dia, 
+                        &mean_aspect_ratio, &stddev_aspect_ratio    );
+    data_stream << mean_dia << "," << stddev_dia << "," 
+                << mean_aspect_ratio << "," << stddev_aspect_ratio << ",";
 
     // Segment the green-red intersection
     cv::Mat green_red_segmented;
@@ -474,13 +495,21 @@ bool processImage(std::string path, std::string blue_image, std::string green_im
     cv::imwrite(out_enhanced.c_str(), color_enhanced);
 
     /* Analyzed image */
-    cv::Mat drawing_blue  = blue_enhanced;
-    cv::Mat drawing_green = cv::Mat::zeros(green_enhanced.size(), CV_8UC1);
+    cv::Mat drawing_blue  = cv::Mat::zeros(blue_enhanced.size(), CV_8UC1);
+    cv::Mat drawing_green = green_enhanced;
     cv::Mat drawing_red   = red_high_enhanced;
 
-    // Draw cell boundaries
-    for (size_t i = 0; i < contours_blue_filtered.size(); i++) {
-        cv::RotatedRect min_ellipse = fitEllipse(cv::Mat(contours_blue_filtered[i]));
+    // Draw neural cell boundaries
+    for (size_t i = 0; i < neural_contours.size(); i++) {
+        cv::RotatedRect min_ellipse = fitEllipse(cv::Mat(neural_contours[i]));
+        ellipse(drawing_blue, min_ellipse, 255, 4, 8);
+        ellipse(drawing_green, min_ellipse, 255, 4, 8);
+        ellipse(drawing_red, min_ellipse, 255, 4, 8);
+    }
+
+    // Draw astrocyte boundaries
+    for (size_t i = 0; i < astrocyte_contours.size(); i++) {
+        cv::RotatedRect min_ellipse = fitEllipse(cv::Mat(astrocyte_contours[i]));
         ellipse(drawing_blue, min_ellipse, 255, 4, 8);
         ellipse(drawing_green, min_ellipse, 255, 4, 8);
         ellipse(drawing_red, min_ellipse, 0, 4, 8);
@@ -542,9 +571,11 @@ int main(int argc, char *argv[]) {
         return -1;
     }
 
-    data_stream << "Image,Cell Count,Cell Diameter (mean),Cell Diameter (std. dev.),\
-                    Cell Aspect Ratio (mean),Cell Aspect Ratio (std. dev.),\
-                    ROI Cell Count (mean),ROI Cell Count (std. dev.),";
+    data_stream << "Image,Cell Count,Neural Cell Count,Astrocyte Count,\
+                    Neural Cell Diameter (mean),Neural Cell Diameter (std. dev.),\
+                    Neural Cell Aspect Ratio (mean),Neural Cell Aspect Ratio (std. dev.),\
+                    Astrocyte Diameter (mean),Astrocyte Diameter (std. dev.),\
+                    Astrocyte Aspect Ratio (mean),Astrocyte Aspect Ratio (std. dev.),";
 
     data_stream << "Green-Red Contour Count,";
     for (unsigned int i = 0; i < NUM_AREA_BINS-1; i++) {
