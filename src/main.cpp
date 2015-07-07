@@ -594,29 +594,30 @@ int main(int argc, char *argv[]) {
         return -1;
     }
 
-    data_stream << "Image,Cell Count,Neural Cell Count,Astrocyte Count,\
-                    Neural Cell Diameter (mean),Neural Cell Diameter (std. dev.),\
-                    Neural Cell Aspect Ratio (mean),Neural Cell Aspect Ratio (std. dev.),\
-                    Astrocyte Diameter (mean),Astrocyte Diameter (std. dev.),\
-                    Astrocyte Aspect Ratio (mean),Astrocyte Aspect Ratio (std. dev.),";
+    data_stream << "Image,";
+    data_stream << "Cell Count,";
+    data_stream << "Neural Cell Count,";
+    data_stream << "Astrocyte Count,";
+    data_stream << "Neural Cell Diameter (mean),";
+    data_stream << "Neural Cell Diameter (std. dev.),";
+    data_stream << "Neural Cell Aspect Ratio (mean),";
+    data_stream << "Neural Cell Aspect Ratio (std. dev.),";
+    data_stream << "Astrocyte Diameter (mean),";
+    data_stream << "Astrocyte Diameter (std. dev.),";
+    data_stream << "Astrocyte Aspect Ratio (mean),";
+    data_stream << "Astrocyte Aspect Ratio (std. dev.),";
 
     data_stream << "Green-Red Contour Count,";
     for (unsigned int i = 0; i < NUM_AREA_BINS-1; i++) {
-        data_stream << i*BIN_AREA 
-                    << " <= Green-Red Contour Area < " 
-                    << (i+1)*BIN_AREA << ",";
+        data_stream << i*BIN_AREA << " <= Green-Red Contour Area < " << (i+1)*BIN_AREA << ",";
     }
-    data_stream << "Green-Red Contour Area >= " 
-                << (NUM_AREA_BINS-1)*BIN_AREA << ",";
+    data_stream << "Green-Red Contour Area >= " << (NUM_AREA_BINS-1)*BIN_AREA << ",";
 
     data_stream << "Green-Red High Contour Count,";
     for (unsigned int i = 0; i < NUM_AREA_BINS-1; i++) {
-        data_stream << i*BIN_AREA 
-                    << " <= Green-Red High Contour Area < " 
-                    << (i+1)*BIN_AREA << ",";
+        data_stream << i*BIN_AREA << " <= Green-Red High Contour Area < " << (i+1)*BIN_AREA << ",";
     }
-    data_stream << "Green-Red High Contour Area >= " 
-                << (NUM_AREA_BINS-1)*BIN_AREA << ",";
+    data_stream << "Green-Red High Contour Area >= " << (NUM_AREA_BINS-1)*BIN_AREA << ",";
 
     data_stream << std::endl;
     data_stream.close();
