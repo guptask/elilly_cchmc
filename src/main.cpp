@@ -35,8 +35,10 @@ enum class HierarchyType : unsigned char {
 };
 
 /* Enhance the image */
-bool enhanceImage(cv::Mat src, ChannelType channel_type, 
-                            cv::Mat *norm, cv::Mat *dst) {
+bool enhanceImage(  cv::Mat src,
+                    ChannelType channel_type,
+                    cv::Mat *norm,
+                    cv::Mat *dst    ) {
 
     // Split the image
     std::vector<cv::Mat> channel(3);
@@ -81,12 +83,12 @@ bool enhanceImage(cv::Mat src, ChannelType channel_type,
 }
 
 /* Find the contours in the image */
-void contourCalc(cv::Mat src, ChannelType channel_type, 
+void contourCalc(   cv::Mat src, ChannelType channel_type, 
                     double min_area, cv::Mat *dst, 
                     std::vector<std::vector<cv::Point>> *contours, 
                     std::vector<cv::Vec4i> *hierarchy, 
                     std::vector<HierarchyType> *validity_mask, 
-                    std::vector<double> *parent_area) {
+                    std::vector<double> *parent_area    ) {
 
     cv::Mat temp_src;
     src.copyTo(temp_src);
@@ -150,7 +152,7 @@ void contourCalc(cv::Mat src, ChannelType channel_type,
 /* Filter out ill-formed or small cells */
 void filterCells(   std::vector<std::vector<cv::Point>> blue_contours,
                     std::vector<HierarchyType> blue_contour_mask,
-                    std::vector<std::vector<cv::Point>> *filtered_contours ) {
+                    std::vector<std::vector<cv::Point>> *filtered_contours  ) {
 
     for (size_t i = 0; i < blue_contours.size(); i++) {
         if (blue_contour_mask[i] != HierarchyType::PARENT_CNTR) continue;
@@ -164,7 +166,7 @@ void filterCells(   std::vector<std::vector<cv::Point>> blue_contours,
 }
 
 /* Classify cells as neural cells or astrocytes */
-void classifyCells( std::vector<std::vector<cv::Point>> filtered_blue_contours, 
+void classifyCells( std::vector<std::vector<cv::Point>> filtered_blue_contours,
                     cv::Mat blue_green_intersection,
                     std::vector<std::vector<cv::Point>> *neural_contours,
                     std::vector<std::vector<cv::Point>> *astrocyte_contours ) {
@@ -235,10 +237,10 @@ void separationMetrics( std::vector<std::vector<cv::Point>> contours,
 }
 
 /* Group contour areas into bins */
-void binArea(std::vector<HierarchyType> contour_mask, 
+void binArea(   std::vector<HierarchyType> contour_mask, 
                 std::vector<double> contour_area, 
                 std::string *contour_bins,
-                unsigned int *contour_cnt) {
+                unsigned int *contour_cnt   ) {
 
     std::vector<unsigned int> count(NUM_AREA_BINS, 0);
     *contour_cnt = 0;
