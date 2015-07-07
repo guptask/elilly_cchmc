@@ -10,11 +10,14 @@
 #include "opencv2/imgcodecs.hpp"
 
 
-#define DEBUG_FLAG              0   // Debug flag for image channels
-#define NUM_AREA_BINS           21  // Number of bins
-#define BIN_AREA                25  // Bin area
-#define ROI_FACTOR              3   // ROI of cell = ROI factor x mean diameter
-#define MIN_CELL_ARC_LENGTH     250 // Cell arc length
+#define DEBUG_FLAG              0     // Debug flag for image channels
+#define NUM_AREA_BINS           21    // Number of bins
+#define BIN_AREA                25    // Bin area
+#define ROI_FACTOR              3     // ROI of cell = ROI factor x mean diameter
+#define MIN_CELL_ARC_LENGTH     20    // Cell arc length
+#define SOMA_FACTOR             1.5   // Soma factor
+#define COVERAGE_RATIO          0.4   // Coverage ratio lower threshold for neural soma
+#define PI                      3.14  // Approximate value of pi
 
 /* Channel type */
 enum class ChannelType : unsigned char {
@@ -49,32 +52,17 @@ bool enhanceImage(cv::Mat src, ChannelType channel_type,
     switch(channel_type) {
         case ChannelType::BLUE: {
             // Enhance the blue channel
-
-            // Create the mask
-            cv::Mat src_gray;
-            cv::threshold(normalized, src_gray, 10, 255, cv::THRESH_TOZERO);
-            bitwise_not(src_gray, src_gray);
-            cv::GaussianBlur(src_gray, enhanced, cv::Size(3,3), 0, 0);
-            cv::threshold(enhanced, enhanced, 250, 255, cv::THRESH_BINARY);
-
-            // Invert the mask
-            bitwise_not(enhanced, enhanced);
+            cv::threshold(normalized, enhanced, 5, 255, cv::THRESH_BINARY);
         } break;
 
         case ChannelType::GREEN: {
             // Enhance the green channel
-
-            // Sharpen the channel
-            cv::Mat src_gray;
-            cv::GaussianBlur(normalized, src_gray, cv::Size(3,3), 0, 0);
-            cv::addWeighted(normalized, 1.5, src_gray, -0.5, 0, normalized);
-
-            cv::threshold(normalized, enhanced, 25, 255, cv::THRESH_BINARY);
+            cv::threshold(normalized, enhanced, 20, 255, cv::THRESH_BINARY);
         } break;
 
         case ChannelType::RED: {
             // Enhance the red channel
-            cv::threshold(normalized, enhanced, 10, 255, cv::THRESH_BINARY);
+            cv::threshold(normalized, enhanced, 5, 255, cv::THRESH_BINARY);
         } break;
 
         case ChannelType::RED_HIGH: {
@@ -184,16 +172,26 @@ void classifyCells( std::vector<std::vector<cv::Point>> filtered_blue_contours,
     for (size_t i = 0; i < filtered_blue_contours.size(); i++) {
 
         // Determine whether neural cell by calculating blue-green coverage area
-        std::vector<std::vector<cv::Point>> specific_contour (1, filtered_blue_contours[i]);
         cv::Mat drawing = cv::Mat::zeros(blue_green_intersection.size(), CV_8UC1);
-        drawContours(drawing, specific_contour, -1, cv::Scalar::all(255), cv::FILLED, 
-                                    cv::LINE_8, std::vector<cv::Vec4i>(), 0, cv::Point());
-        int contour_count_before = countNonZero(drawing);
+
+        // Calculate radius and center of the nucleus
+        cv::Moments mu = moments(filtered_blue_contours[i], true);
+        cv::Point2f mc = cv::Point2f(   static_cast<float>(mu.m10/mu.m00), 
+                                        static_cast<float>(mu.m01/mu.m00)   );
+
+        float actual_area = contourArea(filtered_blue_contours[i]);
+        float radius = sqrt(actual_area / PI);
+        cv::circle(drawing, mc, SOMA_FACTOR*radius, 255, -1, 8);
+        //cv::circle(drawing, mc, radius, 0, -1, 8);
+        //drawContours(drawing, filtered_blue_contours, i, 0, cv::FILLED, cv::LINE_8);
+        int initial_score = countNonZero(drawing);
+
         cv::Mat contour_intersection;
         bitwise_and(drawing, blue_green_intersection, contour_intersection);
-        int contour_count_after = countNonZero(contour_intersection);
-        float coverage_ratio = ((float)contour_count_after)/contour_count_before;
-        if (coverage_ratio < 0.40) {
+        int final_score = countNonZero(contour_intersection);
+
+        float coverage_ratio = ((float) final_score) / initial_score;
+        if (coverage_ratio < COVERAGE_RATIO) {
             astrocyte_contours->push_back(filtered_blue_contours[i]);
         } else {
             neural_contours->push_back(filtered_blue_contours[i]);
@@ -218,12 +216,12 @@ void separationMetrics( std::vector<std::vector<cv::Point>> contours,
         mc[i] = cv::Point2f(static_cast<float>(mu.m10/mu.m00), 
                                             static_cast<float>(mu.m01/mu.m00));
         cv::RotatedRect min_area_rect = minAreaRect(cv::Mat(contours[i]));
-        dia[i] = (float) sqrt(pow(min_area_rect.size.width, 2) + 
-                                                pow(min_area_rect.size.height, 2));
         aspect_ratio[i] = float(min_area_rect.size.width)/min_area_rect.size.height;
         if (aspect_ratio[i] > 1.0) {
             aspect_ratio[i] = 1.0/aspect_ratio[i];
         }
+        float actual_area = contourArea(contours[i]);
+        dia[i] = 2 * sqrt(actual_area / PI);
     }
     cv::Scalar mean_dia, stddev_dia;
     cv::meanStdDev(dia, mean_dia, stddev_dia);
@@ -259,8 +257,11 @@ void binArea(std::vector<HierarchyType> contour_mask,
 }
 
 /* Process each image */
-bool processImage(std::string path, std::string blue_image, std::string green_image, 
-                                            std::string red_image, std::string metrics_file) {
+bool processImage(  std::string path,
+                    std::string blue_image,
+                    std::string green_image,
+                    std::string red_image,
+                    std::string metrics_file    ) {
 
     /* Create the data output file for images that were processed */
     std::ofstream data_stream;
@@ -279,27 +280,36 @@ bool processImage(std::string path, std::string blue_image, std::string green_im
 
     // Extract the Blue stream for each input image
     std::string blue_path = path + "original/" + blue_image;
-    cv::Mat blue = cv::imread(blue_path.c_str(), cv::IMREAD_COLOR | cv::IMREAD_ANYDEPTH);
+    std::string cmd = "convert -quiet -quality 100 " + blue_path + " /tmp/img.jpg";
+    system(cmd.c_str());
+    cv::Mat blue = cv::imread("/tmp/img.jpg", cv::IMREAD_COLOR | cv::IMREAD_ANYDEPTH);
     if (blue.empty()) {
         std::cerr << "Invalid blue input filename" << std::endl;
         return false;
     }
+    system("rm /tmp/img.jpg");
 
     // Extract the Green stream for each input image
     std::string green_path = path + "original/" + green_image;
-    cv::Mat green = cv::imread(green_path.c_str(), cv::IMREAD_COLOR | cv::IMREAD_ANYDEPTH);
+    cmd = "convert -quiet -quality 100 " + green_path + " /tmp/img.jpg";
+    system(cmd.c_str());
+    cv::Mat green = cv::imread("/tmp/img.jpg", cv::IMREAD_COLOR | cv::IMREAD_ANYDEPTH);
     if (green.empty()) {
         std::cerr << "Invalid green input filename" << std::endl;
         return false;
     }
+    system("rm /tmp/img.jpg");
 
     // Extract the Red stream for each input image
     std::string red_path = path + "original/" + red_image;
-    cv::Mat red = cv::imread(red_path.c_str(), cv::IMREAD_COLOR | cv::IMREAD_ANYDEPTH);
+    cmd = "convert -quiet -quality 100 " + red_path + " /tmp/img.jpg";
+    system(cmd.c_str());
+    cv::Mat red = cv::imread("/tmp/img.jpg", cv::IMREAD_COLOR | cv::IMREAD_ANYDEPTH);
     if (red.empty()) {
         std::cerr << "Invalid red input filename" << std::endl;
         return false;
     }
+    system("rm /tmp/img.jpg");
 
     /** Gather BGR channel information needed for feature extraction **/
     cv::Mat blue_normalized, blue_enhanced, green_normalized, green_enhanced, 
@@ -320,7 +330,7 @@ bool processImage(std::string path, std::string blue_image, std::string green_im
     // Blue channel
     std::string out_blue = out_directory + blue_image;
     out_blue.insert(out_blue.find_last_of("."), "_blue_enhanced", 14);
-    if (DEBUG_FLAG) cv::imwrite(out_blue.c_str(), blue_enhanced);
+    //if (DEBUG_FLAG) cv::imwrite(out_blue.c_str(), blue_enhanced);
 
     cv::Mat blue_segmented;
     std::vector<std::vector<cv::Point>> contours_blue;
@@ -330,12 +340,12 @@ bool processImage(std::string path, std::string blue_image, std::string green_im
     contourCalc(blue_enhanced, ChannelType::BLUE, 1.0, &blue_segmented, 
                 &contours_blue, &hierarchy_blue, &blue_contour_mask, &blue_contour_area);
     out_blue.insert(out_blue.find_last_of("."), "_segmented", 10);
-    if (DEBUG_FLAG) cv::imwrite(out_blue.c_str(), blue_segmented);
+    //if (DEBUG_FLAG) cv::imwrite(out_blue.c_str(), blue_segmented);
 
     // Green channel
     std::string out_green = out_directory + green_image;
     out_green.insert(out_green.find_last_of("."), "_green_enhanced", 15);
-    if (DEBUG_FLAG) cv::imwrite(out_green.c_str(), green_enhanced);
+    //if (DEBUG_FLAG) cv::imwrite(out_green.c_str(), green_enhanced);
 
     cv::Mat green_segmented;
     std::vector<std::vector<cv::Point>> contours_green;
@@ -345,12 +355,12 @@ bool processImage(std::string path, std::string blue_image, std::string green_im
     contourCalc(green_enhanced, ChannelType::GREEN, 1.0, &green_segmented, 
                 &contours_green, &hierarchy_green, &green_contour_mask, &green_contour_area);
     out_green.insert(out_green.find_last_of("."), "_segmented", 10);
-    if (DEBUG_FLAG) cv::imwrite(out_green.c_str(), green_segmented);
+    //if (DEBUG_FLAG) cv::imwrite(out_green.c_str(), green_segmented);
 
     // Red channel
     std::string out_red = out_directory + red_image;
     out_red.insert(out_red.find_last_of("."), "_red_enhanced", 13);
-    if (DEBUG_FLAG) cv::imwrite(out_red.c_str(), red_enhanced);
+    //if (DEBUG_FLAG) cv::imwrite(out_red.c_str(), red_enhanced);
 
     cv::Mat red_segmented;
     std::vector<std::vector<cv::Point>> contours_red;
@@ -360,12 +370,12 @@ bool processImage(std::string path, std::string blue_image, std::string green_im
     contourCalc(red_enhanced, ChannelType::RED, 1.0, &red_segmented, 
                 &contours_red, &hierarchy_red, &red_contour_mask, &red_contour_area);
     out_red.insert(out_red.find_last_of("."), "_segmented", 10);
-    if (DEBUG_FLAG) cv::imwrite(out_red.c_str(), red_segmented);
+    //if (DEBUG_FLAG) cv::imwrite(out_red.c_str(), red_segmented);
 
     // Red High channel
     std::string out_red_high = out_directory + red_image;
     out_red_high.insert(out_red_high.find_last_of("."), "_red_high_enhanced", 18);
-    if (DEBUG_FLAG) cv::imwrite(out_red_high.c_str(), red_high_enhanced);
+    //if (DEBUG_FLAG) cv::imwrite(out_red_high.c_str(), red_high_enhanced);
 
     cv::Mat red_high_segmented;
     std::vector<std::vector<cv::Point>> contours_red_high;
@@ -377,7 +387,7 @@ bool processImage(std::string path, std::string blue_image, std::string green_im
                 &hierarchy_red_high, &red_high_contour_mask, 
                 &red_high_contour_area);
     out_red_high.insert(out_red_high.find_last_of("."), "_segmented", 10);
-    if (DEBUG_FLAG) cv::imwrite(out_red_high.c_str(), red_high_segmented);
+    //if (DEBUG_FLAG) cv::imwrite(out_red_high.c_str(), red_high_segmented);
 
 
     /* Common image name */
@@ -481,7 +491,12 @@ bool processImage(std::string path, std::string blue_image, std::string green_im
     cv::merge(merge_normalized, color_normalized);
     std::string out_normalized = out_directory + common_image;
     out_normalized.insert(out_normalized.find_last_of("."), "_a_normalized", 13);
-    cv::imwrite(out_normalized.c_str(), color_normalized);
+    if (DEBUG_FLAG) {
+        cv::imwrite("/tmp/img.jpg", color_normalized);
+        cmd = "convert -quiet /tmp/img.jpg " + out_normalized;
+        system(cmd.c_str());
+        system("rm /tmp/img.jpg");
+    }
 
     /* Enhanced image */
     std::vector<cv::Mat> merge_enhanced;
@@ -492,27 +507,32 @@ bool processImage(std::string path, std::string blue_image, std::string green_im
     cv::merge(merge_enhanced, color_enhanced);
     std::string out_enhanced = out_directory + common_image;
     out_enhanced.insert(out_enhanced.find_last_of("."), "_b_enhanced", 11);
-    cv::imwrite(out_enhanced.c_str(), color_enhanced);
+    if (DEBUG_FLAG) {
+        cv::imwrite("/tmp/img.jpg", color_enhanced);
+        cmd = "convert -quiet /tmp/img.jpg " + out_enhanced;
+        system(cmd.c_str());
+        system("rm /tmp/img.jpg");
+    }
 
     /* Analyzed image */
-    cv::Mat drawing_blue  = cv::Mat::zeros(blue_enhanced.size(), CV_8UC1);
-    cv::Mat drawing_green = green_enhanced;
-    cv::Mat drawing_red   = red_high_enhanced;
+    cv::Mat drawing_blue  = 2*blue_normalized;
+    cv::Mat drawing_green = green_normalized;
+    cv::Mat drawing_red   = red_normalized;
 
     // Draw neural cell boundaries
     for (size_t i = 0; i < neural_contours.size(); i++) {
         cv::RotatedRect min_ellipse = fitEllipse(cv::Mat(neural_contours[i]));
-        ellipse(drawing_blue, min_ellipse, 255, 4, 8);
-        ellipse(drawing_green, min_ellipse, 255, 4, 8);
-        ellipse(drawing_red, min_ellipse, 255, 4, 8);
+        ellipse(drawing_blue, min_ellipse, 255, 2, 8);
+        ellipse(drawing_green, min_ellipse, 255, 2, 8);
+        ellipse(drawing_red, min_ellipse, 255, 2, 8);
     }
 
     // Draw astrocyte boundaries
     for (size_t i = 0; i < astrocyte_contours.size(); i++) {
         cv::RotatedRect min_ellipse = fitEllipse(cv::Mat(astrocyte_contours[i]));
-        ellipse(drawing_blue, min_ellipse, 255, 4, 8);
-        ellipse(drawing_green, min_ellipse, 255, 4, 8);
-        ellipse(drawing_red, min_ellipse, 0, 4, 8);
+        ellipse(drawing_blue, min_ellipse, 255, 2, 8);
+        ellipse(drawing_green, min_ellipse, 255, 2, 8);
+        ellipse(drawing_red, min_ellipse, 0, 2, 8);
     }
 
     // Merge the modified red, blue and green layers
@@ -523,8 +543,11 @@ bool processImage(std::string path, std::string blue_image, std::string green_im
     cv::Mat color_analyzed;
     cv::merge(merge_analyzed, color_analyzed);
     std::string out_analyzed = out_directory + common_image;
-    out_analyzed.insert(out_analyzed.find_last_of("."), "_c_analyzed", 11);
-    cv::imwrite(out_analyzed.c_str(), color_analyzed);
+    if (DEBUG_FLAG) out_analyzed.insert(out_analyzed.find_last_of("."), "_c_analyzed", 11);
+    cv::imwrite("/tmp/img.jpg", color_analyzed);
+    cmd = "convert -quiet /tmp/img.jpg " + out_analyzed;
+    system(cmd.c_str());
+    system("rm /tmp/img.jpg");
 
     return true;
 }
