@@ -184,8 +184,6 @@ void classifyCells( std::vector<std::vector<cv::Point>> filtered_blue_contours,
         float actual_area = contourArea(filtered_blue_contours[i]);
         float radius = sqrt(actual_area / PI);
         cv::circle(drawing, mc, SOMA_FACTOR*radius, 255, -1, 8);
-        //cv::circle(drawing, mc, radius, 0, -1, 8);
-        //drawContours(drawing, filtered_blue_contours, i, 0, cv::FILLED, cv::LINE_8);
         int initial_score = countNonZero(drawing);
 
         cv::Mat contour_intersection;
@@ -203,47 +201,26 @@ void classifyCells( std::vector<std::vector<cv::Point>> filtered_blue_contours,
 
 /* Separation metrics */
 void separationMetrics( std::vector<std::vector<cv::Point>> contours, 
-                        float *mean_diameter,
-                        float *stddev_diameter,
-                        float *mean_aspect_ratio,
-                        float *stddev_aspect_ratio  ) {
+                        float *aggregate_diameter,
+                        float *aggregate_aspect_ratio   ) {
 
-    // Compute the normal distribution parameters of cells
-    std::vector<cv::Point2f> mc(contours.size());
-    std::vector<float> dia(contours.size());
-    std::vector<float> aspect_ratio(contours.size());
-
+    *aggregate_diameter = 0;
+    *aggregate_aspect_ratio = 0;
     for (size_t i = 0; i < contours.size(); i++) {
-        cv::Moments mu = moments(contours[i], true);
-        mc[i] = cv::Point2f(static_cast<float>(mu.m10/mu.m00), 
-                                            static_cast<float>(mu.m01/mu.m00));
-        cv::RotatedRect min_area_rect = minAreaRect(cv::Mat(contours[i]));
-        aspect_ratio[i] = float(min_area_rect.size.width)/min_area_rect.size.height;
-        if (aspect_ratio[i] > 1.0) {
-            aspect_ratio[i] = 1.0/aspect_ratio[i];
-        }
-        float actual_area = contourArea(contours[i]);
-        dia[i] = 2 * sqrt(actual_area / PI);
+        auto min_area_rect = minAreaRect(cv::Mat(contours[i]));
+        float aspect_ratio = float(min_area_rect.size.width)/min_area_rect.size.height;
+        if (aspect_ratio > 1.0) aspect_ratio = 1.0/aspect_ratio;
+        *aggregate_aspect_ratio += aspect_ratio;
+        *aggregate_diameter += 2 * sqrt(contourArea(contours[i]) / PI);
     }
-    cv::Scalar mean_dia, stddev_dia;
-    cv::meanStdDev(dia, mean_dia, stddev_dia);
-    *mean_diameter = static_cast<float>(mean_dia.val[0]);
-    *stddev_diameter = static_cast<float>(stddev_dia.val[0]);
-
-    cv::Scalar mean_ratio, stddev_ratio;
-    cv::meanStdDev(aspect_ratio, mean_ratio, stddev_ratio);
-    *mean_aspect_ratio = static_cast<float>(mean_ratio.val[0]);
-    *stddev_aspect_ratio = static_cast<float>(stddev_ratio.val[0]);
 }
 
 /* Group contour areas into bins */
 void binArea(   std::vector<HierarchyType> contour_mask, 
                 std::vector<double> contour_area, 
-                std::string *contour_bins,
-                unsigned int *contour_cnt   ) {
+                std::string *contour_output ) {
 
     std::vector<unsigned int> count(NUM_AREA_BINS, 0);
-    *contour_cnt = 0;
     for (size_t i = 0; i < contour_mask.size(); i++) {
         if (contour_mask[i] != HierarchyType::PARENT_CNTR) continue;
         unsigned int area = static_cast<unsigned int>(round(contour_area[i]));
@@ -252,10 +229,13 @@ void binArea(   std::vector<HierarchyType> contour_mask,
         count[bin_index]++;
     }
 
+    unsigned int contour_cnt = 0;
+    std::string area_binned;
     for (size_t i = 0; i < count.size(); i++) {
-        *contour_cnt += count[i];
-        *contour_bins += std::to_string(count[i]) + ",";
+        area_binned += "," + std::to_string(count[i]);
+        contour_cnt += count[i];
     }
+    *contour_output = std::to_string(contour_cnt) + area_binned;
 }
 
 /* Process each image */
@@ -263,15 +243,7 @@ bool processImage(  std::string path,
                     std::string blue_image,
                     std::string green_image,
                     std::string red_image,
-                    std::string metrics_file    ) {
-
-    /* Create the data output file for images that were processed */
-    std::ofstream data_stream;
-    data_stream.open(metrics_file, std::ios::app);
-    if (!data_stream.is_open()) {
-        std::cerr << "Could not open the data output file." << std::endl;
-        return false;
-    }
+                    std::string *result     ) {
 
     // Create the output directory
     std::string out_directory = path + "result/";
@@ -330,10 +302,6 @@ bool processImage(  std::string path,
     }
 
     // Blue channel
-    std::string out_blue = out_directory + blue_image;
-    out_blue.insert(out_blue.find_last_of("."), "_blue_enhanced", 14);
-    //if (DEBUG_FLAG) cv::imwrite(out_blue.c_str(), blue_enhanced);
-
     cv::Mat blue_segmented;
     std::vector<std::vector<cv::Point>> contours_blue;
     std::vector<cv::Vec4i> hierarchy_blue;
@@ -341,14 +309,8 @@ bool processImage(  std::string path,
     std::vector<double> blue_contour_area;
     contourCalc(blue_enhanced, ChannelType::BLUE, 1.0, &blue_segmented, 
                 &contours_blue, &hierarchy_blue, &blue_contour_mask, &blue_contour_area);
-    out_blue.insert(out_blue.find_last_of("."), "_segmented", 10);
-    //if (DEBUG_FLAG) cv::imwrite(out_blue.c_str(), blue_segmented);
 
     // Green channel
-    std::string out_green = out_directory + green_image;
-    out_green.insert(out_green.find_last_of("."), "_green_enhanced", 15);
-    //if (DEBUG_FLAG) cv::imwrite(out_green.c_str(), green_enhanced);
-
     cv::Mat green_segmented;
     std::vector<std::vector<cv::Point>> contours_green;
     std::vector<cv::Vec4i> hierarchy_green;
@@ -356,14 +318,8 @@ bool processImage(  std::string path,
     std::vector<double> green_contour_area;
     contourCalc(green_enhanced, ChannelType::GREEN, 1.0, &green_segmented, 
                 &contours_green, &hierarchy_green, &green_contour_mask, &green_contour_area);
-    out_green.insert(out_green.find_last_of("."), "_segmented", 10);
-    //if (DEBUG_FLAG) cv::imwrite(out_green.c_str(), green_segmented);
 
     // Red channel
-    std::string out_red = out_directory + red_image;
-    out_red.insert(out_red.find_last_of("."), "_red_enhanced", 13);
-    //if (DEBUG_FLAG) cv::imwrite(out_red.c_str(), red_enhanced);
-
     cv::Mat red_segmented;
     std::vector<std::vector<cv::Point>> contours_red;
     std::vector<cv::Vec4i> hierarchy_red;
@@ -371,14 +327,8 @@ bool processImage(  std::string path,
     std::vector<double> red_contour_area;
     contourCalc(red_enhanced, ChannelType::RED, 1.0, &red_segmented, 
                 &contours_red, &hierarchy_red, &red_contour_mask, &red_contour_area);
-    out_red.insert(out_red.find_last_of("."), "_segmented", 10);
-    //if (DEBUG_FLAG) cv::imwrite(out_red.c_str(), red_segmented);
 
     // Red High channel
-    std::string out_red_high = out_directory + red_image;
-    out_red_high.insert(out_red_high.find_last_of("."), "_red_high_enhanced", 18);
-    //if (DEBUG_FLAG) cv::imwrite(out_red_high.c_str(), red_high_enhanced);
-
     cv::Mat red_high_segmented;
     std::vector<std::vector<cv::Point>> contours_red_high;
     std::vector<cv::Vec4i> hierarchy_red_high;
@@ -388,62 +338,46 @@ bool processImage(  std::string path,
                 &red_high_segmented, &contours_red_high, 
                 &hierarchy_red_high, &red_high_contour_mask, 
                 &red_high_contour_area);
-    out_red_high.insert(out_red_high.find_last_of("."), "_segmented", 10);
-    //if (DEBUG_FLAG) cv::imwrite(out_red_high.c_str(), red_high_segmented);
 
 
     /* Common image name */
     std::string common_image = blue_image;
     common_image[common_image.length()-5] = 'x';
-    data_stream << common_image << ",";
 
 
     /** Extract multi-dimensional features for analysis **/
-
-    // Blue-red channel intersection
-    cv::Mat blue_red_intersection;
-    bitwise_and(blue_enhanced, red_enhanced, blue_red_intersection);
 
     // Blue-green channel intersection
     cv::Mat blue_green_intersection;
     bitwise_and(blue_enhanced, green_enhanced, blue_green_intersection);
 
-    // Green-red channel intersection
-    cv::Mat green_red_intersection;
-    bitwise_and(green_enhanced, red_enhanced, green_red_intersection);
-
-    // Green-red high channel intersection
-    cv::Mat green_red_high_intersection;
-    bitwise_and(green_enhanced, red_high_enhanced, green_red_high_intersection);
-
     // Filter the blue contours
     std::vector<std::vector<cv::Point>> contours_blue_filtered;
     filterCells(contours_blue, blue_contour_mask, &contours_blue_filtered);
+    *result += std::to_string(contours_blue_filtered.size()) + ",";
 
     // Classify the filtered cells as neural cells or astrocytes
     std::vector<std::vector<cv::Point>> neural_contours, astrocyte_contours;
     classifyCells(contours_blue_filtered, blue_green_intersection, 
                                         &neural_contours, &astrocyte_contours);
-    data_stream << contours_blue_filtered.size() << "," 
-                << neural_contours.size() << "," 
-                << astrocyte_contours.size() << ",";
 
     // Separation metrics for neural cells
-    float mean_dia = 0.0, stddev_dia = 0.0;
-    float mean_aspect_ratio = 0.0, stddev_aspect_ratio = 0.0;
-    separationMetrics(  neural_contours, 
-                        &mean_dia, &stddev_dia, 
-                        &mean_aspect_ratio, &stddev_aspect_ratio    );
-    data_stream << mean_dia << "," << stddev_dia << "," 
-                << mean_aspect_ratio << "," << stddev_aspect_ratio << ",";
+    float aggregate_dia = 0.0, aggregate_aspect_ratio = 0.0;
+    separationMetrics(neural_contours, &aggregate_dia, &aggregate_aspect_ratio);
+    *result +=  std::to_string(neural_contours.size())  + "," +
+                std::to_string(aggregate_dia)           + "," +
+                std::to_string(aggregate_aspect_ratio)  + ",";
 
     // Separation metrics for astrocytes
-    mean_dia = stddev_dia = mean_aspect_ratio = stddev_aspect_ratio = 0.0;
-    separationMetrics(  astrocyte_contours, 
-                        &mean_dia, &stddev_dia, 
-                        &mean_aspect_ratio, &stddev_aspect_ratio    );
-    data_stream << mean_dia << "," << stddev_dia << "," 
-                << mean_aspect_ratio << "," << stddev_aspect_ratio << ",";
+    aggregate_dia = aggregate_aspect_ratio = 0.0;
+    separationMetrics(astrocyte_contours, &aggregate_dia, &aggregate_aspect_ratio);
+    *result +=  std::to_string(astrocyte_contours.size())   + "," +
+                std::to_string(aggregate_dia)               + "," +
+                std::to_string(aggregate_aspect_ratio)      + ",";
+
+    /* Green-red channel intersection */
+    cv::Mat green_red_intersection;
+    bitwise_and(green_enhanced, red_enhanced, green_red_intersection);
 
     // Segment the green-red intersection
     cv::Mat green_red_segmented;
@@ -456,11 +390,13 @@ bool processImage(  std::string path,
                         &green_red_contour_area);
 
     // Characterize the green-red intersection
-    std::string green_red_bins;
-    unsigned int green_red_cnt;
-    binArea(green_red_contour_mask, green_red_contour_area, 
-                    &green_red_bins, &green_red_cnt);
-    data_stream << green_red_cnt << "," << green_red_bins;
+    std::string green_red_output;
+    binArea(green_red_contour_mask, green_red_contour_area, &green_red_output);
+    *result += green_red_output + ",";
+
+    /* Green-red high channel intersection */
+    cv::Mat green_red_high_intersection;
+    bitwise_and(green_enhanced, red_high_enhanced, green_red_high_intersection);
 
     // Segment the green-red high intersection
     cv::Mat green_red_high_segmented;
@@ -474,15 +410,10 @@ bool processImage(  std::string path,
                 &green_red_high_contour_area);
 
     // Characterize the green-red high intersection
-    std::string green_red_high_bins;
-    unsigned int green_red_high_cnt;
-    binArea(green_red_high_contour_mask, green_red_high_contour_area, 
-                    &green_red_high_bins, &green_red_high_cnt);
-    data_stream << green_red_high_cnt << "," << green_red_high_bins;
+    std::string green_red_high_output;
+    binArea(green_red_high_contour_mask, green_red_high_contour_area, &green_red_high_output);
+    *result += green_red_high_output;
 
-
-    data_stream << std::endl;
-    data_stream.close();
 
     /* Normalized image */
     std::vector<cv::Mat> merge_normalized;
@@ -587,6 +518,27 @@ int main(int argc, char *argv[]) {
         return -1;
     }
 
+    /* Read the image index */
+    std::string img_index_filename = path + "ImageIndex.ColumbusIDX.csv";
+    std::ifstream img_index_stream;
+    img_index_stream.open(img_index_filename);
+    if (!img_index_stream.is_open()) {
+        std::cerr << "Invalid file " << img_index_filename << std::endl;
+    }
+
+    std::vector<std::string> well_name;
+    std::string buffer;
+    getline(img_index_stream, buffer); // ignore the header
+    while (getline(img_index_stream, buffer)) {
+        std::vector<std::string> tokens;
+        std::istringstream iss(buffer);
+        std::string token;
+        while (getline(iss, token, '\t')) {
+            tokens.push_back(token);
+        }
+        well_name.push_back(tokens[tokens.size()-5]);
+    }
+
     /* Create and prepare the file for metrics */
     std::string metrics_file = path + "computed_metrics.csv";
     std::ofstream data_stream;
@@ -596,18 +548,14 @@ int main(int argc, char *argv[]) {
         return -1;
     }
 
-    data_stream << "Image,";
+    data_stream << "Well Name,";
     data_stream << "Cell Count,";
     data_stream << "Neural Cell Count,";
-    data_stream << "Astrocyte Count,";
     data_stream << "Neural Cell Diameter (mean),";
-    data_stream << "Neural Cell Diameter (std. dev.),";
     data_stream << "Neural Cell Aspect Ratio (mean),";
-    data_stream << "Neural Cell Aspect Ratio (std. dev.),";
+    data_stream << "Astrocyte Count,";
     data_stream << "Astrocyte Diameter (mean),";
-    data_stream << "Astrocyte Diameter (std. dev.),";
     data_stream << "Astrocyte Aspect Ratio (mean),";
-    data_stream << "Astrocyte Aspect Ratio (std. dev.),";
 
     data_stream << "Green-Red Contour Count,";
     for (unsigned int i = 0; i < NUM_AREA_BINS-1; i++) {
@@ -622,19 +570,26 @@ int main(int argc, char *argv[]) {
     data_stream << "Green-Red High Contour Area >= " << (NUM_AREA_BINS-1)*BIN_AREA << ",";
 
     data_stream << std::endl;
-    data_stream.close();
 
     /* Process each image */
     for (unsigned int index = 0; index < input_images.size(); index += 3) {
-        std::cout << "Processing " << input_images[index] 
-                    << ", " << input_images[index+1] 
-                    << " and " << input_images[index+2] << std::endl;
-        if (!processImage(path, input_images[index], input_images[index+1], 
-                                                input_images[index+2], metrics_file)) {
+        std::cout   << "Processing "
+                    << input_images[index]      << ", "
+                    << input_images[index+1]    << ", "
+                    << input_images[index+2]    << std::endl;
+
+        std::string result = well_name[index] + ",";
+        if (!processImage(  path,
+                            input_images[index],
+                            input_images[index+1],
+                            input_images[index+2],
+                            &result )) {
             std::cout << "ERROR !!!" << std::endl;
             return -1;
         }
+        data_stream << result << std::endl;
     }
+    data_stream.close();
 
     return 0;
 }
