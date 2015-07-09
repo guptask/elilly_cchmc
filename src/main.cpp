@@ -376,45 +376,18 @@ bool processImage(  std::string path,
                 std::to_string(aggregate_dia)               + "," +
                 std::to_string(aggregate_aspect_ratio)      + ",";
 
-    /* Green-red channel intersection */
-    cv::Mat green_red_intersection;
-    bitwise_and(green_enhanced, red_enhanced, green_red_intersection);
+    /* Characterize the red channel */
+    std::string red_output;
+    binArea(red_contour_mask, red_contour_area, &red_output);
+    *result += red_output + ",";
 
-    // Segment the green-red intersection
-    cv::Mat green_red_segmented;
-    std::vector<std::vector<cv::Point>> contours_green_red;
-    std::vector<cv::Vec4i> hierarchy_green_red;
-    std::vector<HierarchyType> green_red_contour_mask;
-    std::vector<double> green_red_contour_area;
-    contourCalc(green_red_intersection, ChannelType::RED, 1.0, &green_red_segmented, 
-                        &contours_green_red, &hierarchy_green_red, &green_red_contour_mask, 
-                        &green_red_contour_area);
+    /* Characterize the red(high) channel */
+    std::string red_high_output;
+    binArea(red_high_contour_mask, red_high_contour_area, &red_high_output);
+    *result += red_high_output;
 
-    // Characterize the green-red intersection
-    std::string green_red_output;
-    binArea(green_red_contour_mask, green_red_contour_area, &green_red_output);
-    *result += green_red_output + ",";
 
-    /* Green-red high channel intersection */
-    cv::Mat green_red_high_intersection;
-    bitwise_and(green_enhanced, red_high_enhanced, green_red_high_intersection);
-
-    // Segment the green-red high intersection
-    cv::Mat green_red_high_segmented;
-    std::vector<std::vector<cv::Point>> contours_green_red_high;
-    std::vector<cv::Vec4i> hierarchy_green_red_high;
-    std::vector<HierarchyType> green_red_high_contour_mask;
-    std::vector<double> green_red_high_contour_area;
-    contourCalc(green_red_high_intersection, ChannelType::RED_HIGH, 1.0, 
-                &green_red_high_segmented, &contours_green_red_high, 
-                &hierarchy_green_red_high, &green_red_high_contour_mask, 
-                &green_red_high_contour_area);
-
-    // Characterize the green-red high intersection
-    std::string green_red_high_output;
-    binArea(green_red_high_contour_mask, green_red_high_contour_area, &green_red_high_output);
-    *result += green_red_high_output;
-
+    /** Draw the required images **/
 
     /* Normalized image */
     std::vector<cv::Mat> merge_normalized;
@@ -451,7 +424,7 @@ bool processImage(  std::string path,
     /* Analyzed image */
     cv::Mat drawing_blue  = 2*blue_normalized;
     cv::Mat drawing_green = green_normalized;
-    cv::Mat drawing_red   = red_normalized;
+    cv::Mat drawing_red   = 2*red_normalized;
 
     // Draw neural cell boundaries
     for (size_t i = 0; i < neural_contours.size(); i++) {
@@ -549,26 +522,26 @@ int main(int argc, char *argv[]) {
         return -1;
     }
 
-    data_stream << "Well Name,";
-    data_stream << "Cell Count,";
-    data_stream << "Neural Cell Count,";
-    data_stream << "Neural Cell Diameter (mean),";
-    data_stream << "Neural Cell Aspect Ratio (mean),";
-    data_stream << "Astrocyte Count,";
-    data_stream << "Astrocyte Diameter (mean),";
-    data_stream << "Astrocyte Aspect Ratio (mean),";
+    data_stream << "Well_Name,";
+    data_stream << "Cell_Count,";
+    data_stream << "Neural_Cell_Count,";
+    data_stream << "Neural_Cell_Diameter_(mean),";
+    data_stream << "Neural_Cell_Aspect_Ratio_(mean),";
+    data_stream << "Astrocyte_Count,";
+    data_stream << "Astrocyte_Diameter_(mean),";
+    data_stream << "Astrocyte_Aspect_Ratio_(mean),";
 
-    data_stream << "Green-Red Contour Count,";
+    data_stream << "Red_Contour_Count,";
     for (unsigned int i = 0; i < NUM_AREA_BINS-1; i++) {
-        data_stream << i*BIN_AREA << " <= Green-Red Contour Area < " << (i+1)*BIN_AREA << ",";
+        data_stream << i*BIN_AREA << " <= Red_Contour_Area < " << (i+1)*BIN_AREA << ",";
     }
-    data_stream << "Green-Red Contour Area >= " << (NUM_AREA_BINS-1)*BIN_AREA << ",";
+    data_stream << "Red_Contour_Area >= " << (NUM_AREA_BINS-1)*BIN_AREA << ",";
 
-    data_stream << "Green-Red High Contour Count,";
+    data_stream << "Red_High_Contour_Count,";
     for (unsigned int i = 0; i < NUM_AREA_BINS-1; i++) {
-        data_stream << i*BIN_AREA << " <= Green-Red High Contour Area < " << (i+1)*BIN_AREA << ",";
+        data_stream << i*BIN_AREA << " <= Red_High_Contour_Area < " << (i+1)*BIN_AREA << ",";
     }
-    data_stream << "Green-Red High Contour Area >= " << (NUM_AREA_BINS-1)*BIN_AREA << ",";
+    data_stream << "Red_High_Contour_Area >= " << (NUM_AREA_BINS-1)*BIN_AREA << ",";
 
     data_stream << std::endl;
 
