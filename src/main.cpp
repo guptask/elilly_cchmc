@@ -480,6 +480,7 @@ bool processImage(  std::string path,
 
     /** Extract multi-dimensional features for analysis **/
 
+    /* Characterize the blue channel */
     // Blue-green channel intersection
     cv::Mat blue_green_intersection;
     bitwise_and(blue_enhanced, green_enhanced, blue_green_intersection);
@@ -508,15 +509,39 @@ bool processImage(  std::string path,
                 std::to_string(aggregate_dia)               + "," +
                 std::to_string(aggregate_aspect_ratio)      + ",";
 
-    /* Characterize the red channel */
-    std::string red_output;
-    binArea(red_contour_mask, red_contour_area, &red_output);
-    *result += red_output + ",";
 
-    /* Characterize the red(high) channel */
+    /* Characterize the green channel */
+    // Green low
+    std::string green_low_output;
+    binArea(green_low_contour_mask, green_low_contour_area, &green_low_output);
+    *result += green_low_output + ",";
+
+    // Green middle
+    std::string green_middle_output;
+    binArea(green_middle_contour_mask, green_middle_contour_area, &green_middle_output);
+    *result += green_middle_output + ",";
+
+    // Green high
+    std::string green_high_output;
+    binArea(green_high_contour_mask, green_high_contour_area, &green_high_output);
+    *result += green_high_output + ",";
+
+
+    /* Characterize the red channel */
+    // Red low
+    std::string red_low_output;
+    binArea(red_low_contour_mask, red_low_contour_area, &red_low_output);
+    *result += red_low_output + ",";
+
+    // Red middle
+    std::string red_middle_output;
+    binArea(red_middle_contour_mask, red_middle_contour_area, &red_middle_output);
+    *result += red_middle_output + ",";
+
+    // Red high
     std::string red_high_output;
     binArea(red_high_contour_mask, red_high_contour_area, &red_high_output);
-    *result += red_high_output;
+    *result += red_high_output + ",";
 
 
     /** Draw the required images **/
@@ -572,6 +597,14 @@ bool processImage(  std::string path,
         ellipse(drawing_blue, min_ellipse, 255, 2, 8);
         ellipse(drawing_green, min_ellipse, 255, 2, 8);
         ellipse(drawing_red, min_ellipse, 0, 2, 8);
+    }
+
+    // Draw synapse boundaries
+    for (size_t i = 0; i < contours_red.size(); i++) {
+        if (red_contour_mask[i] != HierarchyType::PARENT_CNTR) continue;
+        drawContours(drawing_blue, contours_red, i, 0, 2, 8, hierarchy_red);
+        drawContours(drawing_green, contours_red, i, 255, 2, 8, hierarchy_red);
+        drawContours(drawing_red, contours_red, i, 255, 2, 8, hierarchy_red);
     }
 
     // Merge the modified red, blue and green layers
@@ -663,11 +696,35 @@ int main(int argc, char *argv[]) {
     data_stream << "Astrocyte_Diameter_(mean),";
     data_stream << "Astrocyte_Aspect_Ratio_(mean),";
 
-    data_stream << "Red_Contour_Count,";
+    data_stream << "Green_Low_Contour_Count,";
     for (unsigned int i = 0; i < NUM_AREA_BINS-1; i++) {
-        data_stream << i*BIN_AREA << " <= Red_Contour_Area < " << (i+1)*BIN_AREA << ",";
+        data_stream << i*BIN_AREA << " <= Green_Low_Contour_Area < " << (i+1)*BIN_AREA << ",";
     }
-    data_stream << "Red_Contour_Area >= " << (NUM_AREA_BINS-1)*BIN_AREA << ",";
+    data_stream << "Green_Low_Contour_Area >= " << (NUM_AREA_BINS-1)*BIN_AREA << ",";
+
+    data_stream << "Green_Middle_Contour_Count,";
+    for (unsigned int i = 0; i < NUM_AREA_BINS-1; i++) {
+        data_stream << i*BIN_AREA << " <= Green_Middle_Contour_Area < " << (i+1)*BIN_AREA << ",";
+    }
+    data_stream << "Green_Middle_Contour_Area >= " << (NUM_AREA_BINS-1)*BIN_AREA << ",";
+
+    data_stream << "Green_High_Contour_Count,";
+    for (unsigned int i = 0; i < NUM_AREA_BINS-1; i++) {
+        data_stream << i*BIN_AREA << " <= Green_High_Contour_Area < " << (i+1)*BIN_AREA << ",";
+    }
+    data_stream << "Green_High_Contour_Area >= " << (NUM_AREA_BINS-1)*BIN_AREA << ",";
+
+    data_stream << "Red_Low_Contour_Count,";
+    for (unsigned int i = 0; i < NUM_AREA_BINS-1; i++) {
+        data_stream << i*BIN_AREA << " <= Red_Low_Contour_Area < " << (i+1)*BIN_AREA << ",";
+    }
+    data_stream << "Red_Low_Contour_Area >= " << (NUM_AREA_BINS-1)*BIN_AREA << ",";
+
+    data_stream << "Red_Middle_Contour_Count,";
+    for (unsigned int i = 0; i < NUM_AREA_BINS-1; i++) {
+        data_stream << i*BIN_AREA << " <= Red_Middle_Contour_Area < " << (i+1)*BIN_AREA << ",";
+    }
+    data_stream << "Red_Middle_Contour_Area >= " << (NUM_AREA_BINS-1)*BIN_AREA << ",";
 
     data_stream << "Red_High_Contour_Count,";
     for (unsigned int i = 0; i < NUM_AREA_BINS-1; i++) {
