@@ -189,17 +189,24 @@ void contourCalc(   cv::Mat src, ChannelType channel_type,
 }
 
 /* Filter out ill-formed or small cells */
-void filterCells(   std::vector<std::vector<cv::Point>> blue_contours,
-                    std::vector<HierarchyType> blue_contour_mask,
-                    std::vector<std::vector<cv::Point>> *filtered_contours  ) {
+void filterCells(   std::vector<std::vector<cv::Point>> contours,
+                    std::vector<HierarchyType> contour_mask,
+                    std::vector<double> contours_area,
+                    std::vector<std::vector<cv::Point>> *filtered_contours,
+                    std::vector<HierarchyType> *filtered_contour_mask,
+                    std::vector<double> *filtered_contours_area     ) {
 
-    for (size_t i = 0; i < blue_contours.size(); i++) {
-        if (blue_contour_mask[i] != HierarchyType::PARENT_CNTR) continue;
+    for (size_t i = 0; i < contours.size(); i++) {
+        if (contour_mask[i] != HierarchyType::PARENT_CNTR) continue;
+
+        // Eliminate invalid contours
+        if (contours[i].size() < 5) continue;
 
         // Eliminate small contours via contour arc calculation
-        if ((arcLength(blue_contours[i], true) >= MIN_CELL_ARC_LENGTH) && 
-                                            (blue_contours[i].size() >= 5)) {
-            filtered_contours->push_back(blue_contours[i]);
+        if (arcLength(contours[i], true) >= MIN_CELL_ARC_LENGTH) {
+            filtered_contours->push_back(contours[i]);
+            filtered_contour_mask->push_back(contour_mask[i]);
+            filtered_contours_area->push_back(contours_area[i]);
         }
     }
 }
@@ -491,7 +498,14 @@ bool processImage(  std::string path,
 
     // Filter the blue contours
     std::vector<std::vector<cv::Point>> contours_blue_filtered;
-    filterCells(contours_blue, blue_contour_mask, &contours_blue_filtered);
+    std::vector<HierarchyType> blue_filtered_contour_mask;
+    std::vector<double> blue_filtered_contours_area;
+    filterCells(    contours_blue,
+                    blue_contour_mask,
+                    blue_contour_area,
+                    &contours_blue_filtered,
+                    &blue_filtered_contour_mask,
+                    &blue_filtered_contours_area    );
     *result += std::to_string(contours_blue_filtered.size()) + ",";
 
     // Classify the filtered cells as neural cells or astrocytes
@@ -598,9 +612,9 @@ bool processImage(  std::string path,
     // Draw astrocyte boundaries
     for (size_t i = 0; i < astrocyte_contours.size(); i++) {
         cv::RotatedRect min_ellipse = fitEllipse(cv::Mat(astrocyte_contours[i]));
-        ellipse(drawing_blue, min_ellipse, 255, 2, 8);
-        ellipse(drawing_green, min_ellipse, 255, 2, 8);
-        ellipse(drawing_red, min_ellipse, 0, 2, 8);
+        ellipse(drawing_blue, min_ellipse, 255, 1, 8);
+        ellipse(drawing_green, min_ellipse, 255, 1, 8);
+        ellipse(drawing_red, min_ellipse, 0, 1, 8);
     }
 
     // Draw synapse boundaries
