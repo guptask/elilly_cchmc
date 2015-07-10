@@ -11,9 +11,8 @@
 
 
 #define DEBUG_FLAG              0     // Debug flag for image channels
-#define NUM_AREA_BINS           21    // Number of bins
-#define BIN_AREA                25    // Bin area
-#define ROI_FACTOR              3     // ROI of cell = ROI factor x mean diameter
+#define NUM_AREA_BINS           11    // Number of bins
+#define BIN_AREA                20    // Bin area
 #define MIN_CELL_ARC_LENGTH     20    // Cell arc length
 #define SOMA_FACTOR             1.5   // Soma factor
 #define COVERAGE_RATIO          0.4   // Coverage ratio lower threshold for neural soma
@@ -70,41 +69,41 @@ bool enhanceImage(  cv::Mat src,
 
         case ChannelType::GREEN_LOW: {
             // Enhance the green low channel
-            cv::threshold(normalized, enhanced, 10, 255, cv::THRESH_TOZERO);
-            cv::threshold(normalized, enhanced, 30, 255, cv::THRESH_BINARY);
+            cv::threshold(normalized, enhanced, 20, 255, cv::THRESH_TOZERO);
+            cv::threshold(enhanced, enhanced, 50, 255, cv::THRESH_BINARY);
         } break;
 
         case ChannelType::GREEN_MIDDLE: {
             // Enhance the green middle channel
-            cv::threshold(normalized, enhanced, 30, 255, cv::THRESH_TOZERO);
-            cv::threshold(normalized, enhanced, 60, 255, cv::THRESH_BINARY);
+            cv::threshold(normalized, enhanced, 50, 255, cv::THRESH_TOZERO);
+            cv::threshold(enhanced, enhanced, 80, 255, cv::THRESH_BINARY);
         } break;
 
         case ChannelType::GREEN_HIGH: {
             // Enhance the green high channel
-            cv::threshold(normalized, enhanced, 60, 255, cv::THRESH_BINARY);
+            cv::threshold(normalized, enhanced, 80, 255, cv::THRESH_BINARY);
         } break;
 
         case ChannelType::RED: {
             // Enhance the red channel
-            cv::threshold(normalized, enhanced, 10, 255, cv::THRESH_BINARY);
+            cv::threshold(normalized, enhanced, 15, 255, cv::THRESH_BINARY);
         } break;
 
         case ChannelType::RED_LOW: {
             // Enhance the red low channel
-            cv::threshold(normalized, enhanced, 10, 255, cv::THRESH_TOZERO);
-            cv::threshold(normalized, enhanced, 30, 255, cv::THRESH_BINARY);
+            cv::threshold(normalized, enhanced, 15, 255, cv::THRESH_TOZERO);
+            cv::threshold(enhanced, enhanced, 50, 255, cv::THRESH_BINARY);
         } break;
 
         case ChannelType::RED_MIDDLE: {
             // Enhance the red middle channel
-            cv::threshold(normalized, enhanced, 30, 255, cv::THRESH_TOZERO);
-            cv::threshold(normalized, enhanced, 60, 255, cv::THRESH_BINARY);
+            cv::threshold(normalized, enhanced, 50, 255, cv::THRESH_TOZERO);
+            cv::threshold(enhanced, enhanced, 80, 255, cv::THRESH_BINARY);
         } break;
 
         case ChannelType::RED_HIGH: {
             // Enhance the red high channel
-            cv::threshold(normalized, enhanced, 60, 255, cv::THRESH_BINARY);
+            cv::threshold(normalized, enhanced, 80, 255, cv::THRESH_BINARY);
         } break;
 
         default: {
@@ -134,7 +133,12 @@ void contourCalc(   cv::Mat src, ChannelType channel_type,
                                                         cv::CHAIN_APPROX_SIMPLE);
         } break;
 
+        case ChannelType::GREEN_LOW :
+        case ChannelType::GREEN_MIDDLE :
+        case ChannelType::GREEN_HIGH :
         case ChannelType::RED : 
+        case ChannelType::RED_LOW :
+        case ChannelType::RED_MIDDLE :
         case ChannelType::RED_HIGH : {
             findContours(temp_src, *contours, *hierarchy, cv::RETR_CCOMP, 
                                                         cv::CHAIN_APPROX_SIMPLE);
@@ -602,9 +606,9 @@ bool processImage(  std::string path,
     // Draw synapse boundaries
     for (size_t i = 0; i < contours_red.size(); i++) {
         if (red_contour_mask[i] != HierarchyType::PARENT_CNTR) continue;
-        drawContours(drawing_blue, contours_red, i, 0, 2, 8, hierarchy_red);
-        drawContours(drawing_green, contours_red, i, 255, 2, 8, hierarchy_red);
-        drawContours(drawing_red, contours_red, i, 255, 2, 8, hierarchy_red);
+        drawContours(drawing_blue, contours_red, i, 0, 1, 8, hierarchy_red);
+        drawContours(drawing_green, contours_red, i, 255, 1, 8, hierarchy_red);
+        drawContours(drawing_red, contours_red, i, 255, 1, 8, hierarchy_red);
     }
 
     // Merge the modified red, blue and green layers
