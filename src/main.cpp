@@ -14,7 +14,7 @@
 #define NUM_AREA_BINS           11    // Number of bins
 #define BIN_AREA                20    // Bin area
 #define NUM_CELL_AREA_BINS      11    // Number of cell bins
-#define CELL_BIN_AREA           20    // Cell bin area
+#define CELL_BIN_AREA           40    // Cell bin area
 #define MIN_CELL_ARC_LENGTH     20    // Cell arc length
 #define SOMA_FACTOR             1.5   // Soma factor
 #define COVERAGE_RATIO          0.4   // Coverage ratio lower threshold for neural soma
@@ -261,8 +261,7 @@ std::string separationMetrics(
         if (aspect_ratio > 1.0) aspect_ratio = 1.0/aspect_ratio;
         aggregate_aspect_ratio += aspect_ratio;
 
-        //float area = contourArea(contours[i]);
-        float area = float(PI * min_area_rect.size.width * min_area_rect.size.height) / 4;
+        float area = contourArea(contours[i]);
         aggregate_diameter += 2 * sqrt(area / PI);
         unsigned int bin_index = (area/CELL_BIN_AREA < NUM_CELL_AREA_BINS) ? 
                                             area/CELL_BIN_AREA : NUM_CELL_AREA_BINS-1;
