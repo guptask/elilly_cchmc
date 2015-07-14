@@ -13,6 +13,8 @@
 #define DEBUG_FLAG              0     // Debug flag for image channels
 #define NUM_AREA_BINS           11    // Number of bins
 #define BIN_AREA                20    // Bin area
+#define NUM_CELL_AREA_BINS      11    // Number of cell bins
+#define CELL_BIN_AREA           20    // Cell bin area
 #define MIN_CELL_ARC_LENGTH     20    // Cell arc length
 #define SOMA_FACTOR             1.5   // Soma factor
 #define COVERAGE_RATIO          0.4   // Coverage ratio lower threshold for neural soma
@@ -86,12 +88,12 @@ bool enhanceImage(  cv::Mat src,
 
         case ChannelType::RED: {
             // Enhance the red channel
-            cv::threshold(normalized, enhanced, 15, 255, cv::THRESH_BINARY);
+            cv::threshold(normalized, enhanced, 17, 255, cv::THRESH_BINARY);
         } break;
 
         case ChannelType::RED_LOW: {
             // Enhance the red low channel
-            cv::threshold(normalized, enhanced, 15, 255, cv::THRESH_TOZERO);
+            cv::threshold(normalized, enhanced, 17, 255, cv::THRESH_TOZERO);
             cv::threshold(enhanced, enhanced, 50, 255, cv::THRESH_BINARY);
         } break;
 
@@ -246,19 +248,35 @@ void classifyCells( std::vector<std::vector<cv::Point>> filtered_blue_contours,
 }
 
 /* Separation metrics */
-void separationMetrics( std::vector<std::vector<cv::Point>> contours, 
-                        float *aggregate_diameter,
-                        float *aggregate_aspect_ratio   ) {
+std::string separationMetrics(
+                std::vector<std::vector<cv::Point>> contours) {
 
-    *aggregate_diameter = 0;
-    *aggregate_aspect_ratio = 0;
+    float aggregate_diameter = 0;
+    float aggregate_aspect_ratio = 0;
+    std::vector<unsigned int> count(NUM_CELL_AREA_BINS, 0);
+
     for (size_t i = 0; i < contours.size(); i++) {
         auto min_area_rect = minAreaRect(cv::Mat(contours[i]));
         float aspect_ratio = float(min_area_rect.size.width)/min_area_rect.size.height;
         if (aspect_ratio > 1.0) aspect_ratio = 1.0/aspect_ratio;
-        *aggregate_aspect_ratio += aspect_ratio;
-        *aggregate_diameter += 2 * sqrt(contourArea(contours[i]) / PI);
+        aggregate_aspect_ratio += aspect_ratio;
+
+        //float area = contourArea(contours[i]);
+        float area = float(PI * min_area_rect.size.width * min_area_rect.size.height) / 4;
+        aggregate_diameter += 2 * sqrt(area / PI);
+        unsigned int bin_index = (area/CELL_BIN_AREA < NUM_CELL_AREA_BINS) ? 
+                                            area/CELL_BIN_AREA : NUM_CELL_AREA_BINS-1;
+        count[bin_index]++;
     }
+
+    std::string result =    std::to_string(contours.size())     + "," +
+                            std::to_string(aggregate_diameter)  + "," +
+                            std::to_string(aggregate_aspect_ratio);
+    for (size_t i = 0; i < count.size(); i++) {
+        result += "," + std::to_string(count[i]);
+    }
+
+    return result;
 }
 
 /* Group contour areas into bins */
@@ -514,18 +532,10 @@ bool processImage(  std::string path,
                                         &neural_contours, &astrocyte_contours);
 
     // Separation metrics for neural cells
-    float aggregate_dia = 0.0, aggregate_aspect_ratio = 0.0;
-    separationMetrics(neural_contours, &aggregate_dia, &aggregate_aspect_ratio);
-    *result +=  std::to_string(neural_contours.size())  + "," +
-                std::to_string(aggregate_dia)           + "," +
-                std::to_string(aggregate_aspect_ratio)  + ",";
+    *result += separationMetrics(neural_contours) + ",";
 
     // Separation metrics for astrocytes
-    aggregate_dia = aggregate_aspect_ratio = 0.0;
-    separationMetrics(astrocyte_contours, &aggregate_dia, &aggregate_aspect_ratio);
-    *result +=  std::to_string(astrocyte_contours.size())   + "," +
-                std::to_string(aggregate_dia)               + "," +
-                std::to_string(aggregate_aspect_ratio)      + ",";
+    *result += separationMetrics(astrocyte_contours) + ",";
 
 
     /* Characterize the green channel */
@@ -707,13 +717,26 @@ int main(int argc, char *argv[]) {
 
     data_stream << "Well_Name,";
     data_stream << "Cell_Count,";
+
+    // Neural bins
     data_stream << "Neural_Cell_Count,";
     data_stream << "Neural_Cell_Diameter_(mean),";
     data_stream << "Neural_Cell_Aspect_Ratio_(mean),";
+    for (unsigned int i = 0; i < NUM_CELL_AREA_BINS-1; i++) {
+        data_stream << i*CELL_BIN_AREA << " <= Neural_Area < " << (i+1)*CELL_BIN_AREA << ",";
+    }
+    data_stream << "Neural_Area >= " << (NUM_CELL_AREA_BINS-1)*CELL_BIN_AREA << ",";
+
+    // Astrocyte bins
     data_stream << "Astrocyte_Count,";
     data_stream << "Astrocyte_Diameter_(mean),";
     data_stream << "Astrocyte_Aspect_Ratio_(mean),";
+    for (unsigned int i = 0; i < NUM_CELL_AREA_BINS-1; i++) {
+        data_stream << i*CELL_BIN_AREA << " <= Astrocyte_Area < " << (i+1)*CELL_BIN_AREA << ",";
+    }
+    data_stream << "Astrocyte_Area >= " << (NUM_CELL_AREA_BINS-1)*CELL_BIN_AREA << ",";
 
+    // Green (low, middle and high) bins
     data_stream << "Green_Low_Contour_Count,";
     for (unsigned int i = 0; i < NUM_AREA_BINS-1; i++) {
         data_stream << i*BIN_AREA << " <= Green_Low_Contour_Area < " << (i+1)*BIN_AREA << ",";
@@ -732,6 +755,7 @@ int main(int argc, char *argv[]) {
     }
     data_stream << "Green_High_Contour_Area >= " << (NUM_AREA_BINS-1)*BIN_AREA << ",";
 
+    // Red (low, middle and high) bins
     data_stream << "Red_Low_Contour_Count,";
     for (unsigned int i = 0; i < NUM_AREA_BINS-1; i++) {
         data_stream << i*BIN_AREA << " <= Red_Low_Contour_Area < " << (i+1)*BIN_AREA << ",";
@@ -796,8 +820,8 @@ int main(int argc, char *argv[]) {
             data_stream << ",";
             if ((i == 2) || (i == 3)) {
                 data_stream << (aggregate[i] ? aggregate[i]/aggregate[1] : 0);
-            } else if ((i == 5) || (i ==6)) {
-                data_stream << (aggregate[i] ? aggregate[i]/aggregate[4] : 0);
+            } else if ((i == NUM_CELL_AREA_BINS+5) || (i == NUM_CELL_AREA_BINS+6)) {
+                data_stream << (aggregate[i] ? aggregate[i]/aggregate[NUM_CELL_AREA_BINS+4] : 0);
             } else {
                 data_stream << aggregate[i];
             }
