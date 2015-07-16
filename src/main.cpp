@@ -583,7 +583,10 @@ bool processImage(  std::string path,
     std::string out_normalized = out_directory + common_image;
     out_normalized.insert(out_normalized.find_last_of("."), "_a_normalized", 13);
     if (DEBUG_FLAG) {
-        cv::imwrite("/tmp/img.jpg", color_normalized);
+        std::vector<int> compression_params;
+        compression_params.push_back(CV_IMWRITE_JPEG_QUALITY);
+        compression_params.push_back(101);
+        cv::imwrite("/tmp/img.jpg", color_normalized, compression_params);
         cmd = "convert -quiet /tmp/img.jpg " + out_normalized;
         system(cmd.c_str());
         system("rm /tmp/img.jpg");
@@ -599,7 +602,10 @@ bool processImage(  std::string path,
     std::string out_enhanced = out_directory + common_image;
     out_enhanced.insert(out_enhanced.find_last_of("."), "_b_enhanced", 11);
     if (DEBUG_FLAG) {
-        cv::imwrite("/tmp/img.jpg", color_enhanced);
+        std::vector<int> compression_params;
+        compression_params.push_back(CV_IMWRITE_JPEG_QUALITY);
+        compression_params.push_back(101);
+        cv::imwrite("/tmp/img.jpg", color_enhanced, compression_params);
         cmd = "convert -quiet /tmp/img.jpg " + out_enhanced;
         system(cmd.c_str());
         system("rm /tmp/img.jpg");
@@ -643,7 +649,10 @@ bool processImage(  std::string path,
     cv::merge(merge_analyzed, color_analyzed);
     std::string out_analyzed = out_directory + common_image;
     if (DEBUG_FLAG) out_analyzed.insert(out_analyzed.find_last_of("."), "_c_analyzed", 11);
-    cv::imwrite("/tmp/img.jpg", color_analyzed);
+    std::vector<int> compression_params;
+    compression_params.push_back(CV_IMWRITE_JPEG_QUALITY);
+    compression_params.push_back(101);
+    cv::imwrite("/tmp/img.jpg", color_analyzed, compression_params);
     cmd = "convert -quiet /tmp/img.jpg " + out_analyzed;
     system(cmd.c_str());
     system("rm /tmp/img.jpg");
@@ -668,8 +677,68 @@ int main(int argc, char *argv[]) {
     std::vector<std::string> input_images;
     FILE *file = fopen(image_list_filename.c_str(), "r");
     if (!file) {
-        std::cerr << "Could not open 'image_list.dat' inside '" << path << "'." << std::endl;
-        return -1;
+
+        /* Try to read the raw directory if it exits */
+        std::string raw_filename = path + "raw/list.dat";
+        FILE *raw_file = fopen(raw_filename.c_str(), "r");
+        if (!raw_file) {
+            std::cerr << "image_list.dat and raw/list.dat not present." << std::endl;
+            return -1;
+        }
+
+        // Read each raw image
+        char line[128];
+        while (fgets(line, sizeof(line), raw_file) != NULL) {
+            line[strlen(line)-1] = 0;
+            std::string temp_str(line);
+            std::cout << "Channel separation for " << temp_str << std::endl;
+
+            // Read the raw image
+            std::string raw_path = path + "raw/images/" + temp_str;
+            std::vector<cv::Mat> channel;
+            if (!cv::imreadmulti(raw_path, channel)) {
+                std::cerr << "Invalid raw image" << std::endl;
+                return -1;
+            }
+
+            // Create the original directory
+            std::string out_directory = path + "original/";
+            struct stat st = {0};
+            if (stat(out_directory.c_str(), &st) == -1) {
+                mkdir(out_directory.c_str(), 0700);
+            }
+
+            // Write the channels separately into the original directory
+            for (unsigned int index = 0; index < channel.size(); index++) {
+                cv::Mat img = channel[index];
+
+                // Create a BGR image for that channel
+                std::vector<cv::Mat> merge_raw;
+                merge_raw.push_back(img);
+                merge_raw.push_back(img);
+                merge_raw.push_back(img);
+                cv::Mat color_raw;
+                cv::merge(merge_raw, color_raw);
+
+                // Write the merged image
+                std::string out_raw_filename = out_directory + temp_str;
+                std::string tail = "-" + std::to_string(index/3) + "-" + std::to_string(index%3);
+                out_raw_filename.insert(out_raw_filename.find_last_of("."), tail);
+                cv::imwrite(out_raw_filename, color_raw);
+            }
+        }
+        fclose(raw_file);
+
+        // Create the image_list.dat
+        std::string cmd = "ls " + path + "original/ > " + image_list_filename;
+        system(cmd.c_str());
+
+        /* Re-try to read the image_list.dat */
+        file = fopen(image_list_filename.c_str(), "r");
+        if (!file) {
+            std::cerr << "image_list.dat not found after raw image processing." << std::endl;
+            return -1;
+        }
     }
     char line[128];
     while (fgets(line, sizeof(line), file) != NULL) {
@@ -683,6 +752,8 @@ int main(int argc, char *argv[]) {
         std::cerr << "Image count incorrect." << std::endl;
         return -1;
     }
+
+    return 0; // temp
 
     /* Read the image index */
     std::string img_index_filename = path + "ImageIndex.ColumbusIDX.csv";
@@ -795,7 +866,7 @@ int main(int argc, char *argv[]) {
                                 input_images[index+1],
                                 input_images[index+2],
                                 &result )) {
-                std::cout << "ERROR !!!" << std::endl;
+                std::cerr << "ERROR !!!" << std::endl;
                 return -1;
             }
 
