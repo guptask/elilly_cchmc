@@ -721,10 +721,13 @@ int main(int argc, char *argv[]) {
                 cv::merge(merge_raw, color_raw);
 
                 // Write the merged image
+                cv::imwrite("/tmp/img.jpg", color_raw);
                 std::string out_raw_filename = out_directory + temp_str;
                 std::string tail = "-" + std::to_string(index/3) + "-" + std::to_string(index%3);
                 out_raw_filename.insert(out_raw_filename.find_last_of("."), tail);
-                cv::imwrite(out_raw_filename, color_raw);
+                std::string cmd = "convert -quiet /tmp/img.jpg " + out_raw_filename;
+                system(cmd.c_str());
+                system("rm /tmp/img.jpg");
             }
         }
         fclose(raw_file);
@@ -752,8 +755,6 @@ int main(int argc, char *argv[]) {
         std::cerr << "Image count incorrect." << std::endl;
         return -1;
     }
-
-    return 0; // temp
 
     /* Read the image index */
     std::string img_index_filename = path + "ImageIndex.ColumbusIDX.csv";
