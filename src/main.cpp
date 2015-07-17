@@ -697,7 +697,7 @@ int main(int argc, char *argv[]) {
             // Read the raw image
             std::string raw_path = path + "raw/images/" + temp_str;
             std::vector<cv::Mat> channel;
-            if (!cv::imreadmulti(raw_path, channel)) {
+            if (!cv::imreadmulti(raw_path, channel, cv::IMREAD_ANYCOLOR | cv::IMREAD_ANYDEPTH)) {
                 std::cerr << "Invalid raw image" << std::endl;
                 return -1;
             }
