@@ -701,6 +701,13 @@ int main(int argc, char *argv[]) {
                 return -1;
             }
 
+            // Modify the file name for ordering
+            auto dot_pos  = temp_str.find(".");
+            auto dash_pos = temp_str.find("-");
+            if (dot_pos == dash_pos+2) {
+                temp_str.insert(dash_pos+1, "0");
+            }
+
             // Create the original directory
             std::string out_directory = path + "original/";
             struct stat st = {0};
