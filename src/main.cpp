@@ -27,11 +27,11 @@ enum class ChannelType : unsigned char {
     BLUE = 0,
     GREEN,
     GREEN_LOW,
-    GREEN_MIDDLE,
+    GREEN_MEDIUM,
     GREEN_HIGH,
     RED,
     RED_LOW,
-    RED_MIDDLE,
+    RED_MEDIUM,
     RED_HIGH
 };
 
@@ -73,13 +73,13 @@ bool enhanceImage(  cv::Mat src,
         case ChannelType::GREEN_LOW: {
             // Enhance the green low channel
             cv::threshold(normalized, enhanced, 20, 255, cv::THRESH_TOZERO);
-            cv::threshold(enhanced, enhanced, 50, 255, cv::THRESH_BINARY);
+            cv::threshold(enhanced, enhanced, 50, 255, cv::THRESH_TRUNC);
         } break;
 
-        case ChannelType::GREEN_MIDDLE: {
-            // Enhance the green middle channel
+        case ChannelType::GREEN_MEDIUM: {
+            // Enhance the green medium channel
             cv::threshold(normalized, enhanced, 50, 255, cv::THRESH_TOZERO);
-            cv::threshold(enhanced, enhanced, 80, 255, cv::THRESH_BINARY);
+            cv::threshold(enhanced, enhanced, 80, 255, cv::THRESH_TRUNC);
         } break;
 
         case ChannelType::GREEN_HIGH: {
@@ -89,19 +89,19 @@ bool enhanceImage(  cv::Mat src,
 
         case ChannelType::RED: {
             // Enhance the red channel
-            cv::threshold(normalized, enhanced, 17, 255, cv::THRESH_BINARY);
+            cv::threshold(normalized, enhanced, 19, 255, cv::THRESH_BINARY);
         } break;
 
         case ChannelType::RED_LOW: {
             // Enhance the red low channel
-            cv::threshold(normalized, enhanced, 17, 255, cv::THRESH_TOZERO);
-            cv::threshold(enhanced, enhanced, 50, 255, cv::THRESH_BINARY);
+            cv::threshold(normalized, enhanced, 19, 255, cv::THRESH_TOZERO);
+            cv::threshold(enhanced, enhanced, 50, 255, cv::THRESH_TRUNC);
         } break;
 
-        case ChannelType::RED_MIDDLE: {
-            // Enhance the red middle channel
+        case ChannelType::RED_MEDIUM: {
+            // Enhance the red medium channel
             cv::threshold(normalized, enhanced, 50, 255, cv::THRESH_TOZERO);
-            cv::threshold(enhanced, enhanced, 80, 255, cv::THRESH_BINARY);
+            cv::threshold(enhanced, enhanced, 80, 255, cv::THRESH_TRUNC);
         } break;
 
         case ChannelType::RED_HIGH: {
@@ -137,11 +137,11 @@ void contourCalc(   cv::Mat src, ChannelType channel_type,
         } break;
 
         case ChannelType::GREEN_LOW :
-        case ChannelType::GREEN_MIDDLE :
+        case ChannelType::GREEN_MEDIUM :
         case ChannelType::GREEN_HIGH :
         case ChannelType::RED : 
         case ChannelType::RED_LOW :
-        case ChannelType::RED_MIDDLE :
+        case ChannelType::RED_MEDIUM :
         case ChannelType::RED_HIGH : {
             findContours(temp_src, *contours, *hierarchy, cv::RETR_CCOMP, 
                                                         cv::CHAIN_APPROX_SIMPLE);
@@ -367,9 +367,9 @@ bool processImage(  std::string path,
         return false;
     }
 
-    cv::Mat green_middle_normalized, green_middle_enhanced;
-    if(!enhanceImage(green, ChannelType::GREEN_MIDDLE, 
-                        &green_middle_normalized, &green_middle_enhanced)) {
+    cv::Mat green_medium_normalized, green_medium_enhanced;
+    if(!enhanceImage(green, ChannelType::GREEN_MEDIUM, 
+                        &green_medium_normalized, &green_medium_enhanced)) {
         return false;
     }
 
@@ -390,9 +390,9 @@ bool processImage(  std::string path,
         return false;
     }
 
-    cv::Mat red_middle_normalized, red_middle_enhanced;
-    if(!enhanceImage(red, ChannelType::RED_MIDDLE, 
-                        &red_middle_normalized, &red_middle_enhanced)) {
+    cv::Mat red_medium_normalized, red_medium_enhanced;
+    if(!enhanceImage(red, ChannelType::RED_MEDIUM, 
+                        &red_medium_normalized, &red_medium_enhanced)) {
         return false;
     }
 
@@ -435,16 +435,16 @@ bool processImage(  std::string path,
                 &hierarchy_green_low, &green_low_contour_mask, 
                 &green_low_contour_area);
 
-    // Green middle channel
-    cv::Mat green_middle_segmented;
-    std::vector<std::vector<cv::Point>> contours_green_middle;
-    std::vector<cv::Vec4i> hierarchy_green_middle;
-    std::vector<HierarchyType> green_middle_contour_mask;
-    std::vector<double> green_middle_contour_area;
-    contourCalc(green_middle_enhanced, ChannelType::GREEN_MIDDLE, 1.0, 
-                &green_middle_segmented, &contours_green_middle, 
-                &hierarchy_green_middle, &green_middle_contour_mask, 
-                &green_middle_contour_area);
+    // Green medium channel
+    cv::Mat green_medium_segmented;
+    std::vector<std::vector<cv::Point>> contours_green_medium;
+    std::vector<cv::Vec4i> hierarchy_green_medium;
+    std::vector<HierarchyType> green_medium_contour_mask;
+    std::vector<double> green_medium_contour_area;
+    contourCalc(green_medium_enhanced, ChannelType::GREEN_MEDIUM, 1.0, 
+                &green_medium_segmented, &contours_green_medium, 
+                &hierarchy_green_medium, &green_medium_contour_mask, 
+                &green_medium_contour_area);
 
     // Green high channel
     cv::Mat green_high_segmented;
@@ -479,16 +479,16 @@ bool processImage(  std::string path,
                 &hierarchy_red_low, &red_low_contour_mask, 
                 &red_low_contour_area);
 
-    // Red middle channel
-    cv::Mat red_middle_segmented;
-    std::vector<std::vector<cv::Point>> contours_red_middle;
-    std::vector<cv::Vec4i> hierarchy_red_middle;
-    std::vector<HierarchyType> red_middle_contour_mask;
-    std::vector<double> red_middle_contour_area;
-    contourCalc(red_middle_enhanced, ChannelType::RED_MIDDLE, 1.0, 
-                &red_middle_segmented, &contours_red_middle, 
-                &hierarchy_red_middle, &red_middle_contour_mask, 
-                &red_middle_contour_area);
+    // Red medium channel
+    cv::Mat red_medium_segmented;
+    std::vector<std::vector<cv::Point>> contours_red_medium;
+    std::vector<cv::Vec4i> hierarchy_red_medium;
+    std::vector<HierarchyType> red_medium_contour_mask;
+    std::vector<double> red_medium_contour_area;
+    contourCalc(red_medium_enhanced, ChannelType::RED_MEDIUM, 1.0, 
+                &red_medium_segmented, &contours_red_medium, 
+                &hierarchy_red_medium, &red_medium_contour_mask, 
+                &red_medium_contour_area);
 
     // Red high channel
     cv::Mat red_high_segmented;
@@ -544,10 +544,10 @@ bool processImage(  std::string path,
     binArea(green_low_contour_mask, green_low_contour_area, &green_low_output);
     *result += green_low_output + ",";
 
-    // Green middle
-    std::string green_middle_output;
-    binArea(green_middle_contour_mask, green_middle_contour_area, &green_middle_output);
-    *result += green_middle_output + ",";
+    // Green medium
+    std::string green_medium_output;
+    binArea(green_medium_contour_mask, green_medium_contour_area, &green_medium_output);
+    *result += green_medium_output + ",";
 
     // Green high
     std::string green_high_output;
@@ -561,10 +561,10 @@ bool processImage(  std::string path,
     binArea(red_low_contour_mask, red_low_contour_area, &red_low_output);
     *result += red_low_output + ",";
 
-    // Red middle
-    std::string red_middle_output;
-    binArea(red_middle_contour_mask, red_middle_contour_area, &red_middle_output);
-    *result += red_middle_output + ",";
+    // Red medium
+    std::string red_medium_output;
+    binArea(red_medium_contour_mask, red_medium_contour_area, &red_medium_output);
+    *result += red_medium_output + ",";
 
     // Red high
     std::string red_high_output;
@@ -815,18 +815,18 @@ int main(int argc, char *argv[]) {
     }
     data_stream << "Astrocyte_Area >= " << (NUM_CELL_AREA_BINS-1)*CELL_BIN_AREA << ",";
 
-    // Green (low, middle and high) bins
+    // Green (low, medium and high) bins
     data_stream << "Green_Low_Contour_Count,";
     for (unsigned int i = 0; i < NUM_AREA_BINS-1; i++) {
         data_stream << i*BIN_AREA << " <= Green_Low_Contour_Area < " << (i+1)*BIN_AREA << ",";
     }
     data_stream << "Green_Low_Contour_Area >= " << (NUM_AREA_BINS-1)*BIN_AREA << ",";
 
-    data_stream << "Green_Middle_Contour_Count,";
+    data_stream << "Green_Medium_Contour_Count,";
     for (unsigned int i = 0; i < NUM_AREA_BINS-1; i++) {
-        data_stream << i*BIN_AREA << " <= Green_Middle_Contour_Area < " << (i+1)*BIN_AREA << ",";
+        data_stream << i*BIN_AREA << " <= Green_medium_Contour_Area < " << (i+1)*BIN_AREA << ",";
     }
-    data_stream << "Green_Middle_Contour_Area >= " << (NUM_AREA_BINS-1)*BIN_AREA << ",";
+    data_stream << "Green_Medium_Contour_Area >= " << (NUM_AREA_BINS-1)*BIN_AREA << ",";
 
     data_stream << "Green_High_Contour_Count,";
     for (unsigned int i = 0; i < NUM_AREA_BINS-1; i++) {
@@ -834,18 +834,18 @@ int main(int argc, char *argv[]) {
     }
     data_stream << "Green_High_Contour_Area >= " << (NUM_AREA_BINS-1)*BIN_AREA << ",";
 
-    // Red (low, middle and high) bins
+    // Red (low, medium and high) bins
     data_stream << "Red_Low_Contour_Count,";
     for (unsigned int i = 0; i < NUM_AREA_BINS-1; i++) {
         data_stream << i*BIN_AREA << " <= Red_Low_Contour_Area < " << (i+1)*BIN_AREA << ",";
     }
     data_stream << "Red_Low_Contour_Area >= " << (NUM_AREA_BINS-1)*BIN_AREA << ",";
 
-    data_stream << "Red_Middle_Contour_Count,";
+    data_stream << "Red_Medium_Contour_Count,";
     for (unsigned int i = 0; i < NUM_AREA_BINS-1; i++) {
-        data_stream << i*BIN_AREA << " <= Red_Middle_Contour_Area < " << (i+1)*BIN_AREA << ",";
+        data_stream << i*BIN_AREA << " <= Red_medium_Contour_Area < " << (i+1)*BIN_AREA << ",";
     }
-    data_stream << "Red_Middle_Contour_Area >= " << (NUM_AREA_BINS-1)*BIN_AREA << ",";
+    data_stream << "Red_Medium_Contour_Area >= " << (NUM_AREA_BINS-1)*BIN_AREA << ",";
 
     data_stream << "Red_High_Contour_Count,";
     for (unsigned int i = 0; i < NUM_AREA_BINS-1; i++) {
