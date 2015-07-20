@@ -824,7 +824,7 @@ int main(int argc, char *argv[]) {
 
     data_stream << "Green_Medium_Contour_Count,";
     for (unsigned int i = 0; i < NUM_AREA_BINS-1; i++) {
-        data_stream << i*BIN_AREA << " <= Green_medium_Contour_Area < " << (i+1)*BIN_AREA << ",";
+        data_stream << i*BIN_AREA << " <= Green_Medium_Contour_Area < " << (i+1)*BIN_AREA << ",";
     }
     data_stream << "Green_Medium_Contour_Area >= " << (NUM_AREA_BINS-1)*BIN_AREA << ",";
 
@@ -843,7 +843,7 @@ int main(int argc, char *argv[]) {
 
     data_stream << "Red_Medium_Contour_Count,";
     for (unsigned int i = 0; i < NUM_AREA_BINS-1; i++) {
-        data_stream << i*BIN_AREA << " <= Red_medium_Contour_Area < " << (i+1)*BIN_AREA << ",";
+        data_stream << i*BIN_AREA << " <= Red_Medium_Contour_Area < " << (i+1)*BIN_AREA << ",";
     }
     data_stream << "Red_Medium_Contour_Area >= " << (NUM_AREA_BINS-1)*BIN_AREA << ",";
 
