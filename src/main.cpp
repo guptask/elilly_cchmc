@@ -716,22 +716,26 @@ int main(int argc, char *argv[]) {
                 mkdir(out_directory.c_str(), 0700);
             }
 
-            // Write the channels separately into the original directory
-            for (unsigned int index = 0; index < channel.size(); index++) {
-                cv::Mat img = channel[index];
+            // Merge the channel specific z layers
+            for (unsigned int i = 0; i < 3; i++) {
+                cv::Mat temp = channel[i];
+                for (unsigned int j = i+3; j < channel.size(); j += 3) {
+                    bitwise_or(temp, channel[j], temp);
+                }
 
                 // Create a BGR image for that channel
                 std::vector<cv::Mat> merge_raw;
-                merge_raw.push_back(img);
-                merge_raw.push_back(img);
-                merge_raw.push_back(img);
+                merge_raw.push_back(temp);
+                merge_raw.push_back(temp);
+                merge_raw.push_back(temp);
+
                 cv::Mat color_raw;
                 cv::merge(merge_raw, color_raw);
 
                 // Write the merged image
                 cv::imwrite("/tmp/img.jpg", color_raw);
                 std::string out_raw_filename = out_directory + temp_str;
-                std::string tail = "-" + std::to_string(index/3) + "-" + std::to_string(index%3);
+                std::string tail = "-" + std::to_string(i);
                 out_raw_filename.insert(out_raw_filename.find_last_of("."), tail);
                 std::string cmd = "convert -quiet /tmp/img.jpg " + out_raw_filename;
                 system(cmd.c_str());
