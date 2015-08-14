@@ -72,8 +72,8 @@ bool enhanceImage(  cv::Mat src,
 
         case ChannelType::GREEN_LOW: {
             // Enhance the green low channel
-            cv::threshold(normalized, enhanced, 30, 255, cv::THRESH_TOZERO);
-            cv::threshold(enhanced, enhanced, 50, 255, cv::THRESH_TRUNC);
+            cv::threshold(normalized, enhanced, 40, 255, cv::THRESH_TOZERO);
+            cv::threshold(enhanced, enhanced, 70, 255, cv::THRESH_TRUNC);
         } break;
 
         case ChannelType::GREEN_MEDIUM: {
