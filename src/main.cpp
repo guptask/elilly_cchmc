@@ -62,19 +62,12 @@ bool enhanceImage(  cv::Mat src,
     switch(channel_type) {
         case ChannelType::BLUE: {
             // Enhance the blue channel
-            cv::threshold(normalized, enhanced, 62, 255, cv::THRESH_BINARY);
+            cv::threshold(normalized, enhanced, 60, 255, cv::THRESH_BINARY);
         } break;
 
         case ChannelType::GREEN: {
             // Enhance the green channel
-            cv::Mat temp1, temp2;
-            // threshold >= 70
-            cv::threshold(normalized, temp1, 70, 255, cv::THRESH_BINARY);
-            // 30 <= threshold <= 50
-            cv::threshold(normalized, temp2, 40, 255, cv::THRESH_TOZERO);
-            cv::threshold(temp2, temp2, 50, 255, cv::THRESH_TRUNC);
-            cv::threshold(temp2, temp2, 40, 255, cv::THRESH_BINARY);
-            bitwise_or(temp1, temp2, enhanced);
+            cv::threshold(normalized, enhanced, 65, 255, cv::THRESH_BINARY);
         } break;
 
         case ChannelType::GREEN_LOW: {
