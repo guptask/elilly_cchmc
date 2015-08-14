@@ -20,7 +20,7 @@
 #define COVERAGE_RATIO          0.4   // Coverage ratio lower threshold for neural soma
 #define PI                      3.14  // Approximate value of pi
 #define FRAMES_PER_WELL         25    // Frames per well
-#define PLATES_PER_FRAME        15     // Plates per frame
+#define PLATES_PER_FRAME        5     // Plates per frame
 
 /* Channel type */
 enum class ChannelType : unsigned char {
