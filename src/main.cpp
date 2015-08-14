@@ -10,13 +10,13 @@
 #include "opencv2/imgcodecs.hpp"
 
 
-#define DEBUG_FLAG              0     // Debug flag for image channels
+#define DEBUG_FLAG              1     // Debug flag for image channels
 #define NUM_AREA_BINS           11    // Number of bins
 #define BIN_AREA                20    // Bin area
 #define NUM_CELL_AREA_BINS      11    // Number of cell bins
 #define CELL_BIN_AREA           40    // Cell bin area
-#define MIN_CELL_ARC_LENGTH     20    // Cell arc length
-#define SOMA_FACTOR             1.5   // Soma factor
+#define MIN_CELL_ARC_LENGTH     150   // Cell arc length
+#define SOMA_FACTOR             1.2   // Soma factor
 #define COVERAGE_RATIO          0.4   // Coverage ratio lower threshold for neural soma
 #define PI                      3.14  // Approximate value of pi
 #define FRAMES_PER_WELL         25    // Frames per well
@@ -62,51 +62,58 @@ bool enhanceImage(  cv::Mat src,
     switch(channel_type) {
         case ChannelType::BLUE: {
             // Enhance the blue channel
-            cv::threshold(normalized, enhanced, 5, 255, cv::THRESH_BINARY);
+            cv::threshold(normalized, enhanced, 62, 255, cv::THRESH_BINARY);
         } break;
 
         case ChannelType::GREEN: {
             // Enhance the green channel
-            cv::threshold(normalized, enhanced, 20, 255, cv::THRESH_BINARY);
+            cv::Mat temp1, temp2;
+            // threshold >= 70
+            cv::threshold(normalized, temp1, 70, 255, cv::THRESH_BINARY);
+            // 30 <= threshold <= 50
+            cv::threshold(normalized, temp2, 40, 255, cv::THRESH_TOZERO);
+            cv::threshold(temp2, temp2, 50, 255, cv::THRESH_TRUNC);
+            cv::threshold(temp2, temp2, 40, 255, cv::THRESH_BINARY);
+            bitwise_or(temp1, temp2, enhanced);
         } break;
 
         case ChannelType::GREEN_LOW: {
             // Enhance the green low channel
-            cv::threshold(normalized, enhanced, 20, 255, cv::THRESH_TOZERO);
+            cv::threshold(normalized, enhanced, 30, 255, cv::THRESH_TOZERO);
             cv::threshold(enhanced, enhanced, 50, 255, cv::THRESH_TRUNC);
         } break;
 
         case ChannelType::GREEN_MEDIUM: {
             // Enhance the green medium channel
-            cv::threshold(normalized, enhanced, 50, 255, cv::THRESH_TOZERO);
-            cv::threshold(enhanced, enhanced, 80, 255, cv::THRESH_TRUNC);
+            cv::threshold(normalized, enhanced, 70, 255, cv::THRESH_TOZERO);
+            cv::threshold(enhanced, enhanced, 100, 255, cv::THRESH_TRUNC);
         } break;
 
         case ChannelType::GREEN_HIGH: {
             // Enhance the green high channel
-            cv::threshold(normalized, enhanced, 80, 255, cv::THRESH_BINARY);
+            cv::threshold(normalized, enhanced, 100, 255, cv::THRESH_BINARY);
         } break;
 
         case ChannelType::RED: {
             // Enhance the red channel
-            cv::threshold(normalized, enhanced, 19, 255, cv::THRESH_BINARY);
+            cv::threshold(normalized, enhanced, 35, 255, cv::THRESH_BINARY);
         } break;
 
         case ChannelType::RED_LOW: {
             // Enhance the red low channel
-            cv::threshold(normalized, enhanced, 19, 255, cv::THRESH_TOZERO);
-            cv::threshold(enhanced, enhanced, 50, 255, cv::THRESH_TRUNC);
+            cv::threshold(normalized, enhanced, 35, 255, cv::THRESH_TOZERO);
+            cv::threshold(enhanced, enhanced, 60, 255, cv::THRESH_TRUNC);
         } break;
 
         case ChannelType::RED_MEDIUM: {
             // Enhance the red medium channel
-            cv::threshold(normalized, enhanced, 50, 255, cv::THRESH_TOZERO);
-            cv::threshold(enhanced, enhanced, 80, 255, cv::THRESH_TRUNC);
+            cv::threshold(normalized, enhanced, 60, 255, cv::THRESH_TOZERO);
+            cv::threshold(enhanced, enhanced, 90, 255, cv::THRESH_TRUNC);
         } break;
 
         case ChannelType::RED_HIGH: {
             // Enhance the red high channel
-            cv::threshold(normalized, enhanced, 80, 255, cv::THRESH_BINARY);
+            cv::threshold(normalized, enhanced, 90, 255, cv::THRESH_BINARY);
         } break;
 
         default: {
@@ -613,9 +620,9 @@ bool processImage(  std::string path,
     }
 
     /* Analyzed image */
-    cv::Mat drawing_blue  = 2*blue_normalized;
+    cv::Mat drawing_blue  = blue_normalized;
     cv::Mat drawing_green = green_normalized;
-    cv::Mat drawing_red   = 2*red_normalized;
+    cv::Mat drawing_red   = red_normalized;
 
     // Draw neural cell boundaries
     for (size_t i = 0; i < neural_contours.size(); i++) {
