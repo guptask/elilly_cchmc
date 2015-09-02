@@ -775,7 +775,7 @@ int main(int argc, char *argv[]) {
         std::cerr << "Invalid file " << img_index_filename << std::endl;
     }
 
-    std::vector<std::string> well_name;
+    std::vector<std::string> well_name, plate_well_merged_name;
     std::string buffer;
     getline(img_index_stream, buffer); // ignore the header
     while (getline(img_index_stream, buffer)) {
@@ -786,6 +786,10 @@ int main(int argc, char *argv[]) {
             tokens.push_back(token);
         }
         well_name.push_back(tokens[tokens.size()-5]);
+        token = tokens[tokens.size()-14] + "_" +
+                tokens[tokens.size()-11] + "_" +
+                tokens[tokens.size()-5];
+        plate_well_merged_name.push_back(token);
     }
 
     /* Create and prepare the file for metrics */
@@ -797,6 +801,7 @@ int main(int argc, char *argv[]) {
         return -1;
     }
 
+    data_stream << "Plate_Well_Merged_Name,";
     data_stream << "Well_Name,";
     data_stream << "Cell_Count,";
 
@@ -899,6 +904,8 @@ int main(int argc, char *argv[]) {
         }
 
         // Write the data
+        data_stream << plate_well_merged_name[3*FRAMES_PER_WELL*well_index];
+        data_stream << ",";
         data_stream << well_name[3*FRAMES_PER_WELL*well_index];
         for (unsigned int i = 0; i < aggregate.size(); i++) {
             data_stream << ",";
