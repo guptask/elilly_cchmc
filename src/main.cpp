@@ -10,7 +10,7 @@
 #include "opencv2/imgcodecs.hpp"
 
 
-#define DEBUG_FLAG              1     // Debug flag for image channels
+#define DEBUG_FLAG              0     // Debug flag for image channels
 #define NUM_AREA_BINS           11    // Number of bins
 #define BIN_AREA                20    // Bin area
 #define NUM_CELL_AREA_BINS      11    // Number of cell bins
