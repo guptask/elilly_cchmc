@@ -20,7 +20,6 @@
 #define COVERAGE_RATIO          0.4   // Coverage ratio lower threshold for neural soma
 #define PI                      3.14  // Approximate value of pi
 #define FRAMES_PER_WELL         20    // Frames per well
-#define PLATES_PER_FRAME        1     // Plates per frame
 
 /* Channel type */
 enum class ChannelType : unsigned char {
@@ -861,15 +860,15 @@ int main(int argc, char *argv[]) {
 
     /* Process the image set */
     for (unsigned int well_index = 0; 
-            well_index < input_images.size()/(3*FRAMES_PER_WELL*PLATES_PER_FRAME); well_index++) {
+            well_index < input_images.size()/(3*FRAMES_PER_WELL); well_index++) {
 
         std::vector<float> aggregate;
         for (unsigned int combined_index = 0; 
-                combined_index < FRAMES_PER_WELL*PLATES_PER_FRAME; combined_index++) {
+                combined_index < FRAMES_PER_WELL; combined_index++) {
 
             // Process the 3-channel image
             unsigned int index = 
-                        3 * (FRAMES_PER_WELL*PLATES_PER_FRAME*well_index + combined_index);
+                        3 * (FRAMES_PER_WELL*well_index + combined_index);
             std::cout   << "Processing "
                         << input_images[index]      << ", "
                         << input_images[index+1]    << ", "
@@ -900,11 +899,7 @@ int main(int argc, char *argv[]) {
         }
 
         // Write the data
-        if (PLATES_PER_FRAME == 1) {
-            data_stream << well_name[3*FRAMES_PER_WELL*well_index];
-        } else {
-            data_stream << well_name[FRAMES_PER_WELL*well_index];
-        }
+        data_stream << well_name[3*FRAMES_PER_WELL*well_index];
         for (unsigned int i = 0; i < aggregate.size(); i++) {
             data_stream << ",";
             if ((i == 2) || (i == 3)) {

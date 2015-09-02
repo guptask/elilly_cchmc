@@ -20,7 +20,6 @@
 #define COVERAGE_RATIO          0.4   // Coverage ratio lower threshold for neural soma
 #define PI                      3.14  // Approximate value of pi
 #define FRAMES_PER_WELL         25    // Frames per well
-#define PLATES_PER_FRAME        5     // Plates per frame
 
 /* Channel type */
 enum class ChannelType : unsigned char {
@@ -900,11 +899,7 @@ int main(int argc, char *argv[]) {
         }
 
         // Write the data
-        if (PLATES_PER_FRAME == 1) {
-            data_stream << well_name[3*FRAMES_PER_WELL*well_index];
-        } else {
-            data_stream << well_name[FRAMES_PER_WELL*well_index];
-        }
+        data_stream << well_name[15*FRAMES_PER_WELL*well_index];
         for (unsigned int i = 0; i < aggregate.size(); i++) {
             data_stream << ",";
             if ((i == 2) || (i == 3)) {
